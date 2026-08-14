@@ -1,0 +1,107 @@
+### 1. Create Cairo Branch
+# @name createCairoBranch
+POST http://localhost:3000/branch
+Content-Type: application/json
+
+{
+  "name": "فرع القاهره",
+  "code": "CAI-001",
+  "address": "القاهره، وسط البلد"
+}
+
+### Create Cairo Inventory
+@cairoBranchId = {{createCairoBranch.response.body.data.id}}
+POST http://localhost:3000/inventory/branch/{{cairoBranchId}}
+Content-Type: application/json
+
+{
+  "name": "مخزن القاهره",
+  "address": "القاهره، المنطقة الصناعية"
+}
+
+### 2. Create Alex Branch
+# @name createAlexBranch
+POST http://localhost:3000/branch
+Content-Type: application/json
+
+{
+  "name": "فرع اسكندريه",
+  "code": "ALX-001",
+  "address": "الاسكندريه، محطة الرمل"
+}
+
+### Create Alex Inventory
+@alexBranchId = {{createAlexBranch.response.body.data.id}}
+POST http://localhost:3000/inventory/branch/{{alexBranchId}}
+Content-Type: application/json
+
+{
+  "name": "مخزن اسكندريه",
+  "address": "الاسكندريه، العجمي"
+}
+
+### 3. Create Mansoura Branch
+# @name createMansouraBranch
+POST http://localhost:3000/branch
+Content-Type: application/json
+
+{
+  "name": "فرع المنصوره",
+  "code": "MAN-001",
+  "address": "المنصوره، حي الجامعه"
+}
+
+### Create Mansoura Inventory
+@mansouraBranchId = {{createMansouraBranch.response.body.data.id}}
+POST http://localhost:3000/inventory/branch/{{mansouraBranchId}}
+Content-Type: application/json
+
+{
+  "name": "مخزن المنصوره",
+  "address": "المنصوره، طلخا"
+}
+
+### 4. Create Tanta Branch
+# @name createTantaBranch
+POST http://localhost:3000/branch
+Content-Type: application/json
+
+{
+  "name": "فرع طنطا",
+  "code": "TAN-001",
+  "address": "طنطا، شارع البحر"
+}
+
+### Create Tanta Inventory
+@tantaBranchId = {{createTantaBranch.response.body.data.id}}
+POST http://localhost:3000/inventory/branch/{{tantaBranchId}}
+Content-Type: application/json
+
+{
+  "name": "مخزن طنطا",
+  "address": "طنطا، سبرباي"
+}
+
+### 5. Create Giza Branch
+# @name createGizaBranch
+POST http://localhost:3000/branch
+Content-Type: application/json
+
+{
+  "name": "فرع الجيزه",
+  "code": "GIZ-001",
+  "address": "الجيزه، الدقي"
+}
+
+### Create Giza Inventory
+@gizaBranchId = {{createGizaBranch.response.body.data.id}}
+POST http://localhost:3000/inventory/branch/{{gizaBranchId}}
+Content-Type: application/json
+
+{
+  "name": "مخزن الجيزه",
+  "address": "الجيزه، 6 اكتوبر"
+}
+
+### Read All Inventory for Cairo Branch
+GET http://localhost:3000/inventory/branch/{{cairoBranchId}}

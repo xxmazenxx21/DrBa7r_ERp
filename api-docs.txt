@@ -1,0 +1,448 @@
+App API Documentation
+=====================
+
+Base URL
+--------
+http://localhost:3000
+
+---------------------------------------------------------
+BRANCH APIs
+---------------------------------------------------------
+
+1) Create Branch
+   Method: POST
+   URL: /branch
+   Description: Creates a new branch.
+
+   Validation Rules:
+   - name: required string, minimum 2 characters
+   - code: required string, minimum 2 characters
+   - address: optional string
+
+   Request Example:
+   {
+     "name": "فرع القاهره",
+     "code": "CAI-001",
+     "address": "القاهره، وسط البلد"
+   }
+
+   Response Example:
+   {
+     "data": {
+       "id": "cm4branch123",
+       "name": "فرع القاهره",
+       "code": "CAI-001",
+       "address": "القاهره، وسط البلد",
+       "createdAt": "2026-08-07T00:00:00.000Z",
+       "updatedAt": "2026-08-07T00:00:00.000Z",
+       "deletedAt": null
+     },
+     "message": "Branch created successfully"
+   }
+
+2) Get All Branches
+   Method: GET
+   URL: /branch
+   Description: Returns all active (not deleted) branches.
+   Response Example:
+   {
+     "data": [
+       {
+         "id": "cm4branch123",
+         "name": "فرع القاهره",
+         "code": "CAI-001",
+         "address": "القاهره، وسط البلد",
+         "createdAt": "2026-08-07T00:00:00.000Z",
+         "updatedAt": "2026-08-07T00:00:00.000Z",
+         "deletedAt": null
+       },
+       {
+         "id": "cm4branch456",
+         "name": "فرع اسكندريه",
+         "code": "ALX-001",
+         "address": "الاسكندريه، محطة الرمل",
+         "createdAt": "2026-08-07T01:00:00.000Z",
+         "updatedAt": "2026-08-07T01:00:00.000Z",
+         "deletedAt": null
+       }
+     ],
+     "message": "All branches returned successfully"
+   }
+
+3) Get Branch By ID
+   Method: GET
+   URL: /branch/:id
+   Description: Returns one branch by its id.
+
+   Example Request:
+   GET /branch/cm4branch123
+
+   Response Example:
+   {
+     "data": {
+       "id": "cm4branch123",
+       "name": "فرع القاهره",
+       "code": "CAI-001",
+       "address": "القاهره، وسط البلد",
+       "createdAt": "2026-08-07T00:00:00.000Z",
+       "updatedAt": "2026-08-07T00:00:00.000Z",
+       "deletedAt": null
+     },
+     "message": "Branch returned successfully"
+   }
+
+   Error Response (if not found):
+   {
+     "statusCode": 404,
+     "message": "Branch with id cm4branch123 not found",
+     "error": "Not Found"
+   }
+
+4) Update Branch
+   Method: PATCH
+   URL: /branch/:id
+   Description: Updates a specific branch partially.
+
+   Request Example:
+   {
+     "name": "فرع القاهره المحدث"
+   }
+
+   Response Example:
+   {
+     "data": {
+       "id": "cm4branch123",
+       "name": "فرع القاهره المحدث",
+       "code": "CAI-001",
+       "address": "القاهره، وسط البلد",
+       "createdAt": "2026-08-07T00:00:00.000Z",
+       "updatedAt": "2026-08-07T02:00:00.000Z",
+       "deletedAt": null
+     },
+     "message": "Branch updated successfully"
+   }
+
+5) Delete Branch
+   Method: DELETE
+   URL: /branch/:id
+   Description: Soft-deletes a branch (sets deletedAt timestamp).
+
+   Response Example:
+   {
+     "message": "Branch deleted successfully"
+   }
+
+---------------------------------------------------------
+INVENTORY APIs
+---------------------------------------------------------
+
+1) Create Inventory By Branch ID
+   Method: POST
+   URL: /inventory/branch/:branchId
+   Description: Creates a new inventory linked to a specific branch.
+
+   Validation Rules:
+   - name: required string, minimum 2 characters
+   - address: required string, minimum 2 characters
+
+   Request Example:
+   POST /inventory/branch/cm4branch123
+   {
+     "name": "مخزن القاهره",
+     "address": "القاهره، المنطقة الصناعية"
+   }
+
+   Response Example:
+   {
+     "data": {
+       "id": "cm4inventory789",
+       "name": "مخزن القاهره",
+       "branchId": "cm4branch123",
+       "address": "القاهره، المنطقة الصناعية",
+       "createdAt": "2026-08-07T00:00:00.000Z",
+       "updatedAt": "2026-08-07T00:00:00.000Z",
+       "deletedAt": null
+     },
+     "message": "Inventory created successfully"
+   }
+
+2) Get All Inventories By Branch ID
+   Method: GET
+   URL: /inventory/branch/:branchId
+   Description: Returns all active (not deleted) inventories that belong to a specific branch.
+
+   Request Example:
+   GET /inventory/branch/cm4branch123
+
+   Response Example:
+   {
+     "data": [
+       {
+         "id": "cm4inventory789",
+         "name": "مخزن القاهره",
+         "branchId": "cm4branch123",
+         "address": "القاهره، المنطقة الصناعية",
+         "createdAt": "2026-08-07T00:00:00.000Z",
+         "updatedAt": "2026-08-07T00:00:00.000Z",
+         "deletedAt": null
+       }
+     ],
+     "message": "Inventories returned successfully"
+   }
+
+3) Get Inventory By ID
+   Method: GET
+   URL: /inventory/:id
+   Description: Returns one inventory by its id.
+
+   Example Request:
+   GET /inventory/cm4inventory789
+
+   Response Example:
+   {
+     "data": {
+       "id": "cm4inventory789",
+       "name": "مخزن القاهره",
+       "branchId": "cm4branch123",
+       "address": "القاهره، المنطقة الصناعية",
+       "createdAt": "2026-08-07T00:00:00.000Z",
+       "updatedAt": "2026-08-07T00:00:00.000Z",
+       "deletedAt": null
+     },
+     "message": "Inventory returned successfully"
+   }
+
+   Error Response (if not found):
+   {
+     "statusCode": 404,
+     "message": "Inventory with id cm4inventory789 not found",
+     "error": "Not Found"
+   }
+
+4) Update Inventory
+   Method: PATCH
+   URL: /inventory/:id
+   Description: Updates a specific inventory partially.
+
+   Request Example:
+   {
+     "name": "مخزن القاهره الرئيسي",
+     "address": "القاهره، مدينة نصر"
+   }
+
+   Response Example:
+   {
+     "data": {
+       "id": "cm4inventory789",
+       "name": "مخزن القاهره الرئيسي",
+       "branchId": "cm4branch123",
+       "address": "القاهره، مدينة نصر",
+       "createdAt": "2026-08-07T00:00:00.000Z",
+       "updatedAt": "2026-08-07T03:00:00.000Z",
+       "deletedAt": null
+     },
+     "message": "Inventory updated successfully"
+   }
+
+5) Delete Inventory
+   Method: DELETE
+   URL: /inventory/:id
+   Description: Soft-deletes an inventory (sets deletedAt timestamp).
+
+   Response Example:
+   {
+     "message": "Inventory deleted successfully"
+   }
+
+    Error Response (if not found):
+    {
+      "statusCode": 404,
+      "message": "Inventory with id cm4inventory789 not found",
+      "error": "Not Found"
+    }
+
+---------------------------------------------------------
+CATEGORIES APIs
+---------------------------------------------------------
+
+1) Create Category
+   Method: POST
+   URL: /categories
+   Description: Creates a new category.
+
+   Validation Rules:
+   - code: required string
+   - name: required string
+
+   Request Example:
+   {
+     "code": "CAT-001",
+     "name": "مشروبات"
+   }
+
+   Response Example:
+   {
+     "data": {
+       "id": "cm4category123",
+       "code": "CAT-001",
+       "name": "مشروبات"
+     },
+     "message": "Category created successfully"
+   }
+
+2) Get All Categories
+   Method: GET
+   URL: /categories
+   Description: Returns all categories.
+   Response Example:
+   {
+     "data": [
+       {
+         "id": "cm4category123",
+         "code": "CAT-001",
+         "name": "مشروبات"
+       }
+     ],
+     "message": "All categories returned successfully"
+   }
+
+3) Get Category By ID
+   Method: GET
+   URL: /categories/:id
+   Description: Returns one category by its id.
+
+   Example Request:
+   GET /categories/cm4category123
+
+   Response Example:
+   {
+     "data": {
+       "id": "cm4category123",
+       "code": "CAT-001",
+       "name": "مشروبات"
+     },
+     "message": "Category returned successfully"
+   }
+
+4) Update Category
+   Method: PATCH
+   URL: /categories/:id
+   Description: Updates a specific category partially.
+
+   Request Example:
+   {
+     "name": "مشروبات باردة"
+   }
+
+   Response Example:
+   {
+     "data": {
+       "id": "cm4category123",
+       "code": "CAT-001",
+       "name": "مشروبات باردة"
+     },
+     "message": "Category updated successfully"
+   }
+
+5) Delete Category
+   Method: DELETE
+   URL: /categories/:id
+   Description: Deletes a category.
+
+   Response Example:
+   {
+     "message": "Category deleted successfully"
+   }
+
+---------------------------------------------------------
+ITEM UNIT APIs
+---------------------------------------------------------
+
+1) Create Item Unit
+   Method: POST
+   URL: /item-unit
+   Description: Creates a new item unit (e.g., Kg, Carton, Piece).
+
+   Validation Rules:
+   - code: required string
+   - name: required string
+
+   Request Example:
+   {
+     "code": "U-001",
+     "name": "قطعة"
+   }
+
+   Response Example:
+   {
+     "data": {
+       "id": "cm4unit123",
+       "code": "U-001",
+       "name": "قطعة"
+     },
+     "message": "ItemUnit created successfully"
+   }
+
+2) Get All Item Units
+   Method: GET
+   URL: /item-unit
+   Description: Returns all item units.
+   Response Example:
+   {
+     "data": [
+       {
+         "id": "cm4unit123",
+         "code": "U-001",
+         "name": "قطعة"
+       }
+     ],
+     "message": "All item units returned successfully"
+   }
+
+3) Get Item Unit By ID
+   Method: GET
+   URL: /item-unit/:id
+   Description: Returns one item unit by its id.
+
+   Example Request:
+   GET /item-unit/cm4unit123
+
+   Response Example:
+   {
+     "data": {
+       "id": "cm4unit123",
+       "code": "U-001",
+       "name": "قطعة"
+     },
+     "message": "ItemUnit returned successfully"
+   }
+
+4) Update Item Unit
+   Method: PATCH
+   URL: /item-unit/:id
+   Description: Updates a specific item unit partially.
+
+   Request Example:
+   {
+     "name": "قطع"
+   }
+
+   Response Example:
+   {
+     "data": {
+       "id": "cm4unit123",
+       "code": "U-001",
+       "name": "قطع"
+     },
+     "message": "ItemUnit updated successfully"
+   }
+
+5) Delete Item Unit
+   Method: DELETE
+   URL: /item-unit/:id
+   Description: Deletes an item unit.
+
+   Response Example:
+   {
+     "message": "ItemUnit deleted successfully"
+   }
