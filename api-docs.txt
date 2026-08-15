@@ -3,7 +3,7 @@ App API Documentation
 
 Base URL
 --------
-http://localhost:3000
+https://drba7rerp-production.up.railway.app
 
 ---------------------------------------------------------
 BRANCH APIs
