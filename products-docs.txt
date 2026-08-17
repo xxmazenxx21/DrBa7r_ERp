@@ -1,0 +1,232 @@
+Product API Documentation
+=========================
+
+Base URL
+--------
+https://drba7rerp-production.up.railway.app
+
+---------------------------------------------------------
+PRODUCTS APIs
+---------------------------------------------------------
+
+1) Create Product
+   Method: POST
+   URL: /products
+   Description: Creates a new product.
+
+   Validation Rules:
+   - code: required string
+   - name: required string
+   - categoryId: required string
+   - primaryIteamUnitId: required string
+   - itemType: required integer
+   - retailPrice: required number, minimum 0
+   - wholesalePrice: required number, minimum 0
+   - bulkWholesalePrice: required number, minimum 0
+   - barcode: optional string
+   - costingMethod: optional integer
+   - reorderLimit: optional number, minimum 0
+   - hasExpiryDate: optional boolean
+
+   Request Example:
+   {
+     "code": "PROD-001",
+     "barcode": "6221234567890",
+     "name": "بيبسي 330 مل",
+     "categoryId": "cm4category123",
+     "primaryIteamUnitId": "cm4unit123",
+     "itemType": 1,
+     "costingMethod": 1,
+     "retailPrice": 15.0,
+     "wholesalePrice": 12.5,
+     "bulkWholesalePrice": 10.0,
+     "reorderLimit": 50,
+     "hasExpiryDate": true
+   }
+
+   Response Example:
+   {
+     "message": "Product created successfully",
+     "product": {
+       "id": "cm4product123",
+       "code": "PROD-001",
+       "barcode": "6221234567890",
+       "name": "بيبسي 330 مل",
+       "categoryId": "cm4category123",
+       "primaryIteamUnitId": "cm4unit123",
+       "itemType": 1,
+       "costingMethod": 1,
+       "retailPrice": "15",
+       "wholesalePrice": "12.5",
+       "bulkWholesalePrice": "10",
+       "reorderLimit": "50",
+       "hasExpiryDate": true,
+       "createdAt": "2026-08-17T22:45:00.000Z",
+       "updatedAt": "2026-08-17T22:45:00.000Z",
+       "deletedAt": null
+     }
+   }
+
+   Error Response (if code already exists):
+   {
+     "statusCode": 400,
+     "message": "Product already exists",
+     "error": "Bad Request"
+   }
+
+2) Get All Products
+   Method: GET
+   URL: /products
+   Description: Returns all active (not deleted) products with their category and primary item unit relations.
+
+   Response Example:
+   {
+     "message": "Products fetched successfully",
+     "products": [
+       {
+         "id": "cm4product123",
+         "code": "PROD-001",
+         "barcode": "6221234567890",
+         "name": "بيبسي 330 مل",
+         "categoryId": "cm4category123",
+         "primaryIteamUnitId": "cm4unit123",
+         "itemType": 1,
+         "costingMethod": 1,
+         "retailPrice": "15",
+         "wholesalePrice": "12.5",
+         "bulkWholesalePrice": "10",
+         "reorderLimit": "50",
+         "hasExpiryDate": true,
+         "createdAt": "2026-08-17T22:45:00.000Z",
+         "updatedAt": "2026-08-17T22:45:00.000Z",
+         "deletedAt": null,
+         "category": {
+           "id": "cm4category123",
+           "code": "CAT-001",
+           "name": "مشروبات"
+         },
+         "primaryIteamUnit": {
+           "id": "cm4unit123",
+           "code": "U-001",
+           "name": "قطعة"
+         }
+       }
+     ]
+   }
+
+3) Get Product By ID
+   Method: GET
+   URL: /products/:id
+   Description: Returns a single active product by its id along with category, primary item unit, and inventory relations.
+
+   Example Request:
+   GET /products/cm4product123
+
+   Response Example:
+   {
+     "message": "Product fetched successfully",
+     "product": {
+       "id": "cm4product123",
+       "code": "PROD-001",
+       "barcode": "6221234567890",
+       "name": "بيبسي 330 مل",
+       "categoryId": "cm4category123",
+       "primaryIteamUnitId": "cm4unit123",
+       "itemType": 1,
+       "costingMethod": 1,
+       "retailPrice": "15",
+       "wholesalePrice": "12.5",
+       "bulkWholesalePrice": "10",
+       "reorderLimit": "50",
+       "hasExpiryDate": true,
+       "createdAt": "2026-08-17T22:45:00.000Z",
+       "updatedAt": "2026-08-17T22:45:00.000Z",
+       "deletedAt": null,
+       "category": {
+         "id": "cm4category123",
+         "code": "CAT-001",
+         "name": "مشروبات"
+       },
+       "primaryIteamUnit": {
+         "id": "cm4unit123",
+         "code": "U-001",
+         "name": "قطعة"
+       },
+       "productInventories": []
+     }
+   }
+
+   Error Response (if not found):
+   {
+     "statusCode": 404,
+     "message": "Product with ID cm4product123 not found",
+     "error": "Not Found"
+   }
+
+4) Update Product
+   Method: PATCH
+   URL: /products/:id
+   Description: Updates a specific product partially.
+
+   Request Example:
+   {
+     "name": "بيبسي 330 مل - سعر جديد",
+     "retailPrice": 18.0
+   }
+
+   Response Example:
+   {
+     "message": "Product updated successfully",
+     "product": {
+       "id": "cm4product123",
+       "code": "PROD-001",
+       "barcode": "6221234567890",
+       "name": "بيبسي 330 مل - سعر جديد",
+       "categoryId": "cm4category123",
+       "primaryIteamUnitId": "cm4unit123",
+       "itemType": 1,
+       "costingMethod": 1,
+       "retailPrice": "18",
+       "wholesalePrice": "12.5",
+       "bulkWholesalePrice": "10",
+       "reorderLimit": "50",
+       "hasExpiryDate": true,
+       "createdAt": "2026-08-17T22:45:00.000Z",
+       "updatedAt": "2026-08-17T22:50:00.000Z",
+       "deletedAt": null
+     }
+   }
+
+   Error Response (if code already in use):
+   {
+     "statusCode": 400,
+     "message": "Product code already in use",
+     "error": "Bad Request"
+   }
+
+   Error Response (if not found):
+   {
+     "statusCode": 404,
+     "message": "Product with ID cm4product123 not found",
+     "error": "Not Found"
+   }
+
+5) Delete Product
+   Method: DELETE
+   URL: /products/:id
+   Description: Soft-deletes a product (sets deletedAt timestamp).
+
+   Example Request:
+   DELETE /products/cm4product123
+
+   Response Example:
+   {
+     "message": "Product deleted successfully"
+   }
+
+   Error Response (if not found):
+   {
+     "statusCode": 404,
+     "message": "Product with ID cm4product123 not found",
+     "error": "Not Found"
+   }

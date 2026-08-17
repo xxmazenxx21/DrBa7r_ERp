@@ -7,9 +7,10 @@ import { InventoryModule } from './inventory/inventory.module';
 import { ConfigModule } from '@nestjs/config';
 import { CategoriesModule } from './categories/categories.module';
 import { ItemUnitModule } from './item-unit/item-unit.module';
+import { ProductsModule } from './products/products.module';
 
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true }), PrismaModule, BranchModule, InventoryModule, CategoriesModule, ItemUnitModule],
+  imports: [ConfigModule.forRoot({ isGlobal: true }), PrismaModule, BranchModule, InventoryModule, CategoriesModule, ItemUnitModule, ProductsModule],
   controllers: [AppController],
   providers: [AppService],
 })

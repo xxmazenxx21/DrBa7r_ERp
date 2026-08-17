@@ -1,5 +1,6 @@
 model ItemUnit {
- id        String      @id @default(cuid())
- code      String      @unique
-  name      String
+  id       String    @id @default(cuid())
+  code     String    @unique
+  name     String
+  products Product[]
 }

@@ -1,14 +1,13 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UsePipes, ValidationPipe } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
 import { BranchService } from './branch.service';
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
 
 @Controller('branch')
 export class BranchController {
-  constructor(private readonly branchService: BranchService) { }
+  constructor(private readonly branchService: BranchService) {}
 
   @Post()
-  @UsePipes(ValidationPipe)
   create(@Body() createBranchDto: CreateBranchDto) {
     return this.branchService.create(createBranchDto);
   }
@@ -24,7 +23,6 @@ export class BranchController {
   }
 
   @Patch(':id')
-  @UsePipes(ValidationPipe)
   update(@Param('id') id: string, @Body() updateBranchDto: UpdateBranchDto) {
     return this.branchService.update(id, updateBranchDto);
   }
