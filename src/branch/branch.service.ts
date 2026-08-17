@@ -8,7 +8,6 @@ export class BranchService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(data: Prisma.BranchCreateInput) {
-  
     const branch = await this.prisma.branch.create({ data });
     return { data: branch, message: 'Branch created successfully' };
   }
@@ -22,7 +21,9 @@ export class BranchService {
   }
 
   async findOne(id: string) {
-    const branch = await this.prisma.branch.findFirst({ where: { id, deletedAt: null } });
+    const branch = await this.prisma.branch.findFirst({
+      where: { id, deletedAt: null },
+    });
 
     if (!branch) {
       throw new NotFoundException(`Branch with id ${id} not found`);
@@ -43,7 +44,9 @@ export class BranchService {
   }
 
   async remove(id: string) {
-    const branch = await this.prisma.branch.findFirst({ where: { id, deletedAt: null } });
+    const branch = await this.prisma.branch.findFirst({
+      where: { id, deletedAt: null },
+    });
 
     if (!branch) {
       throw new NotFoundException(`Branch with id ${id} not found`);

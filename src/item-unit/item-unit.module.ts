@@ -4,7 +4,7 @@ import { ItemUnitController } from './item-unit.controller';
 import { PrismaModule } from '../prisma/prisma.module';
 
 @Module({
-  imports:[PrismaModule],
+  imports: [PrismaModule],
   controllers: [ItemUnitController],
   providers: [ItemUnitService],
 })

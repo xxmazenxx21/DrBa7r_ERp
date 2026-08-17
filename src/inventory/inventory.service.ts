@@ -19,7 +19,9 @@ export class InventoryService {
   }
 
   async findAllByBranchId(branchId: string) {
-    const branch = await this.prisma.branch.findFirst({ where: { id: branchId, deletedAt: null } });
+    const branch = await this.prisma.branch.findFirst({
+      where: { id: branchId, deletedAt: null },
+    });
 
     if (!branch) {
       throw new NotFoundException(`Branch with id ${branchId} not found`);
@@ -32,7 +34,9 @@ export class InventoryService {
   }
 
   async findOne(id: string) {
-    const inventory = await this.prisma.inventory.findFirst({ where: { id, deletedAt: null } });
+    const inventory = await this.prisma.inventory.findFirst({
+      where: { id, deletedAt: null },
+    });
 
     if (!inventory) {
       throw new NotFoundException(`Inventory with id ${id} not found`);
@@ -42,7 +46,9 @@ export class InventoryService {
   }
 
   async update(id: string, updateInventoryDto: UpdateInventoryDto) {
-  const inventory = await this.prisma.inventory.findFirst({ where: { id, deletedAt: null } });
+    const inventory = await this.prisma.inventory.findFirst({
+      where: { id, deletedAt: null },
+    });
 
     if (!inventory) {
       throw new NotFoundException(`Inventory with id ${id} not found`);
@@ -53,11 +59,16 @@ export class InventoryService {
       data: updateInventoryDto,
     });
 
-    return { data: updatedInventory, message: 'Inventory updated successfully' };
+    return {
+      data: updatedInventory,
+      message: 'Inventory updated successfully',
+    };
   }
 
   async remove(id: string) {
-  const inventory = await this.prisma.inventory.findFirst({ where: { id, deletedAt: null } });
+    const inventory = await this.prisma.inventory.findFirst({
+      where: { id, deletedAt: null },
+    });
 
     if (!inventory) {
       throw new NotFoundException(`Inventory with id ${id} not found`);
