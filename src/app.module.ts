@@ -10,6 +10,7 @@ import { ItemUnitModule } from './item-unit/item-unit.module';
 import { ProductsModule } from './products/products.module';
 import { ProdcutInventoryModule } from './prodcut-inventory/prodcut-inventory.module';
 import { CustomerModule } from './customer/customer.module';
+import { SupplierModule } from './supplier/supplier.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { CustomerModule } from './customer/customer.module';
     ProductsModule,
     ProdcutInventoryModule,
     CustomerModule,
+    SupplierModule,
   ],
   controllers: [AppController],
   providers: [AppService],

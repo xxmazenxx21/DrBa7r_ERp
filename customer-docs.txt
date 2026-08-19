@@ -1,0 +1,186 @@
+Customer API Documentation
+==========================
+
+Base URL
+--------
+https://drba7rerp-production.up.railway.app
+
+---------------------------------------------------------
+CUSTOMER APIs
+---------------------------------------------------------
+
+1) Create Customer
+   Method: POST
+   URL: /customer
+   Description: Creates a new customer.
+
+   Validation Rules:
+   - code: required string
+   - name: required string
+   - taxNumber: optional string
+   - commercialRecord: optional string
+   - phone: optional string
+   - address: optional string
+   - creditLimit: optional number, minimum 0 (defaults to 0 in DB)
+   - openingBalance: optional number (defaults to 0 in DB)
+
+   Request Example:
+   {
+     "code": "CUST-001",
+     "name": "شركة التقنية الحديثة",
+     "taxNumber": "300123456700003",
+     "commercialRecord": "1010123456",
+     "phone": "0501234567",
+     "address": "الرياض، المملكة العربية السعودية",
+     "creditLimit": 10000,
+     "openingBalance": 1500
+   }
+
+   Response Example:
+   {
+     "message": "customer created successfully",
+     "customer": {
+       "id": "cm4customer123",
+       "code": "CUST-001",
+       "name": "شركة التقنية الحديثة",
+       "taxNumber": "300123456700003",
+       "commercialRecord": "1010123456",
+       "phone": "0501234567",
+       "address": "الرياض، المملكة العربية السعودية",
+       "creditLimit": "10000",
+       "openingBalance": "1500",
+       "createdAt": "2026-08-19T13:45:00.000Z",
+       "updatedAt": "2026-08-19T13:45:00.000Z",
+       "deletedAt": null
+     }
+   }
+
+   Error Response (if code already exists):
+   {
+     "statusCode": 400,
+     "message": "this code already exists",
+     "error": "Bad Request"
+   }
+
+2) Get All Customers
+   Method: GET
+   URL: /customer
+   Description: Returns all active (not deleted) customers.
+
+   Response Example (if customers exist):
+   [
+     {
+       "id": "cm4customer123",
+       "code": "CUST-001",
+       "name": "شركة التقنية الحديثة",
+       "taxNumber": "300123456700003",
+       "commercialRecord": "1010123456",
+       "phone": "0501234567",
+       "address": "الرياض، المملكة العربية السعودية",
+       "creditLimit": "10000",
+       "openingBalance": "1500",
+       "createdAt": "2026-08-19T13:45:00.000Z",
+       "updatedAt": "2026-08-19T13:45:00.000Z",
+       "deletedAt": null
+     }
+   ]
+
+   Response Example (if no customers exist):
+   {
+     "message": "no customers found"
+   }
+
+3) Get Customer By ID
+   Method: GET
+   URL: /customer/:id
+   Description: Returns a single active customer by its id.
+
+   Example Request:
+   GET /customer/cm4customer123
+
+   Response Example:
+   {
+     "id": "cm4customer123",
+     "code": "CUST-001",
+     "name": "شركة التقنية الحديثة",
+     "taxNumber": "300123456700003",
+     "commercialRecord": "1010123456",
+     "phone": "0501234567",
+     "address": "الرياض، المملكة العربية السعودية",
+     "creditLimit": "10000",
+     "openingBalance": "1500",
+     "createdAt": "2026-08-19T13:45:00.000Z",
+     "updatedAt": "2026-08-19T13:45:00.000Z",
+     "deletedAt": null
+   }
+
+   Error Response (if not found):
+   {
+     "statusCode": 404,
+     "message": "customer does not exist",
+     "error": "Not Found"
+   }
+
+4) Update Customer
+   Method: PATCH
+   URL: /customer/:id
+   Description: Updates a specific customer partially.
+
+   Request Example:
+   {
+     "name": "شركة التقنية الحديثة المحدودة",
+     "creditLimit": 20000
+   }
+
+   Response Example:
+   {
+     "message": "customer updated successfully",
+     "customer": {
+       "id": "cm4customer123",
+       "code": "CUST-001",
+       "name": "شركة التقنية الحديثة المحدودة",
+       "taxNumber": "300123456700003",
+       "commercialRecord": "1010123456",
+       "phone": "0501234567",
+       "address": "الرياض، المملكة العربية السعودية",
+       "creditLimit": "20000",
+       "openingBalance": "1500",
+       "createdAt": "2026-08-19T13:45:00.000Z",
+       "updatedAt": "2026-08-19T13:50:00.000Z",
+       "deletedAt": null
+     }
+   }
+
+   Error Response (if code already in use by another customer):
+   {
+     "statusCode": 400,
+     "message": "this code already exists",
+     "error": "Bad Request"
+   }
+
+   Error Response (if not found):
+   {
+     "statusCode": 404,
+     "message": "customer not found",
+     "error": "Not Found"
+   }
+
+5) Delete Customer
+   Method: DELETE
+   URL: /customer/:id
+   Description: Soft-deletes a customer (sets deletedAt timestamp).
+
+   Example Request:
+   DELETE /customer/cm4customer123
+
+   Response Example:
+   {
+     "message": "customer deleted successfully"
+   }
+
+   Error Response (if not found):
+   {
+     "statusCode": 404,
+     "message": "customer not found",
+     "error": "Not Found"
+   }

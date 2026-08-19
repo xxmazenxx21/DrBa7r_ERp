@@ -1,0 +1,189 @@
+Supplier API Documentation
+=========================
+
+Base URL
+--------
+https://drba7rerp-production.up.railway.app
+
+---------------------------------------------------------
+SUPPLIER APIs
+---------------------------------------------------------
+
+1) Create Supplier
+   Method: POST
+   URL: /supplier
+   Description: Creates a new supplier.
+
+   Validation Rules:
+   - code: required string (must be unique)
+   - name: required string
+   - taxNumber: optional string
+   - contactPerson: optional string
+   - phone: optional string
+   - email: optional string (must be a valid email format)
+   - openingBalance: optional number (minimum 0)
+
+   Request Example:
+   {
+     "code": "SUP-001",
+     "name": "الشركة العالمية للتجارة",
+     "taxNumber": "123-456-789",
+     "contactPerson": "أحمد محمد",
+     "phone": "01001234567",
+     "email": "ahmed@example.com",
+     "openingBalance": 1500.00
+   }
+
+   Response Example (201 Created):
+   {
+     "message": "supplier created successfully",
+     "supplier": {
+       "id": "cm4supplier123",
+       "code": "SUP-001",
+       "name": "الشركة العالمية للتجارة",
+       "taxNumber": "123-456-789",
+       "contactPerson": "أحمد محمد",
+       "phone": "01001234567",
+       "email": "ahmed@example.com",
+       "openingBalance": "1500",
+       "createdAt": "2026-08-19T14:45:00.000Z",
+       "updatedAt": "2026-08-19T14:45:00.000Z",
+       "deletedAt": null
+     }
+   }
+
+   Error Response (if code already exists):
+   {
+     "statusCode": 400,
+     "message": "this supplier already exists",
+     "error": "Bad Request"
+   }
+
+2) Get All Suppliers
+   Method: GET
+   URL: /supplier
+   Description: Returns all active (not deleted) suppliers.
+
+   Response Example (200 OK):
+   [
+     {
+       "id": "cm4supplier123",
+       "code": "SUP-001",
+       "name": "الشركة العالمية للتجارة",
+       "taxNumber": "123-456-789",
+       "contactPerson": "أحمد محمد",
+       "phone": "01001234567",
+       "email": "ahmed@example.com",
+       "openingBalance": "1500",
+       "createdAt": "2026-08-19T14:45:00.000Z",
+       "updatedAt": "2026-08-19T14:45:00.000Z",
+       "deletedAt": null
+     }
+   ]
+
+   Response Example (if no suppliers):
+   {
+     "message": "no suppliers found"
+   }
+
+3) Get Supplier By ID
+   Method: GET
+   URL: /supplier/:id
+   Description: Returns a single active supplier by its id.
+
+   Path Parameters:
+   - id: required string
+
+   Example Request:
+   GET /supplier/cm4supplier123
+
+   Response Example (200 OK):
+   {
+     "id": "cm4supplier123",
+     "code": "SUP-001",
+     "name": "الشركة العالمية للتجارة",
+     "taxNumber": "123-456-789",
+     "contactPerson": "أحمد محمد",
+     "phone": "01001234567",
+     "email": "ahmed@example.com",
+     "openingBalance": "1500",
+     "createdAt": "2026-08-19T14:45:00.000Z",
+     "updatedAt": "2026-08-19T14:45:00.000Z",
+     "deletedAt": null
+   }
+
+   Error Response (if not found):
+   {
+     "statusCode": 404,
+     "message": "supplier does not exist",
+     "error": "Not Found"
+   }
+
+4) Update Supplier
+   Method: PATCH
+   URL: /supplier/:id
+   Description: Updates a specific supplier partially.
+
+   Path Parameters:
+   - id: required string
+
+   Request Example:
+   {
+     "name": "الشركة العالمية للتجارة - محدث",
+     "openingBalance": 2000.00
+   }
+
+   Response Example (200 OK):
+   {
+     "message": "supplier updated successfully",
+     "supplier": {
+       "id": "cm4supplier123",
+       "code": "SUP-001",
+       "name": "الشركة العالمية للتجارة - محدث",
+       "taxNumber": "123-456-789",
+       "contactPerson": "أحمد محمد",
+       "phone": "01001234567",
+       "email": "ahmed@example.com",
+       "openingBalance": "2000",
+       "createdAt": "2026-08-19T14:45:00.000Z",
+       "updatedAt": "2026-08-19T14:50:00.000Z",
+       "deletedAt": null
+     }
+   }
+
+   Error Response (if new code already in use):
+   {
+     "statusCode": 400,
+     "message": "this code already exists",
+     "error": "Bad Request"
+   }
+
+   Error Response (if not found):
+   {
+     "statusCode": 404,
+     "message": "supplier not found",
+     "error": "Not Found"
+   }
+
+5) Delete Supplier
+   Method: DELETE
+   URL: /supplier/:id
+   Description: Soft-deletes a supplier (sets deletedAt timestamp).
+
+   Path Parameters:
+   - id: required string
+
+   Example Request:
+   DELETE /supplier/cm4supplier123
+
+   Response Example (200 OK):
+   {
+     "message": "supplier deleted successfully"
+   }
+
+   Error Response (if not found):
+   {
+     "statusCode": 404,
+     "message": "supplier not found",
+     "error": "Not Found"
+   }
