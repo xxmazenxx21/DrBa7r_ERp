@@ -1,0 +1,206 @@
+employees API Documentation
+=========================
+
+Base URL
+--------
+https://drba7rerp-production.up.railway.app
+
+---------------------------------------------------------
+EMPLOYEES APIs
+---------------------------------------------------------
+
+1) Create Employee
+   Method: POST
+   URL: /employees/branch/:branchId
+   Description: Creates a new employee under a specific branch.
+
+   Validation Rules:
+   - code: required string
+   - fullName: required string
+   - nationalId: optional string
+   - jobTitle: optional string
+   - hireDate: optional string (must be a valid ISO date string)
+
+   Request Example:
+   {
+     "code": "EMP-001",
+     "fullName": "أحمد محمد",
+     "nationalId": "1234567890",
+     "jobTitle": "مندوب مبيعات",
+     "hireDate": "2025-01-01T00:00:00.000Z"
+   }
+
+   Response Example:
+   {
+     "data": {
+       "id": "cm4employee123",
+       "code": "EMP-001",
+       "fullName": "أحمد محمد",
+       "nationalId": "1234567890",
+       "branchId": "cm4branch123",
+       "jobTitle": "مندوب مبيعات",
+       "hireDate": "2025-01-01T00:00:00.000Z",
+       "createdAt": "2026-08-19T14:45:00.000Z",
+       "updatedAt": "2026-08-19T14:45:00.000Z",
+       "deletedAt": null
+     },
+     "message": "Employee created successfully"
+   }
+
+   Error Response (if branch not found):
+   {
+     "statusCode": 404,
+     "message": "Branch with id cm4branch123 not found",
+     "error": "Not Found"
+   }
+
+   Error Response (if code already exists):
+   {
+     "statusCode": 400,
+     "message": "Employee with code EMP-001 already exists",
+     "error": "Bad Request"
+   }
+
+   Error Response (if national ID already exists):
+   {
+     "statusCode": 400,
+     "message": "Employee with national ID 1234567890 already exists",
+     "error": "Bad Request"
+   }
+
+
+2) Get All Employees By Branch
+   Method: GET
+   URL: /employees/branch/:branchId
+   Description: Returns all active (not deleted) employees for a specific branch.
+
+   Response Example:
+   {
+     "data": [
+       {
+         "id": "cm4employee123",
+         "code": "EMP-001",
+         "fullName": "أحمد محمد",
+         "nationalId": "1234567890",
+         "branchId": "cm4branch123",
+         "jobTitle": "مندوب مبيعات",
+         "hireDate": "2025-01-01T00:00:00.000Z",
+         "createdAt": "2026-08-19T14:45:00.000Z",
+         "updatedAt": "2026-08-19T14:45:00.000Z",
+         "deletedAt": null
+       }
+     ],
+     "message": "Employees returned successfully"
+   }
+
+   Error Response (if branch not found):
+   {
+     "statusCode": 404,
+     "message": "Branch with id cm4branch123 not found",
+     "error": "Not Found"
+   }
+
+
+3) Get Employee By ID
+   Method: GET
+   URL: /employees/:id
+   Description: Returns a single active employee by its id.
+
+   Response Example:
+   {
+     "data": {
+       "id": "cm4employee123",
+       "code": "EMP-001",
+       "fullName": "أحمد محمد",
+       "nationalId": "1234567890",
+       "branchId": "cm4branch123",
+       "jobTitle": "مندوب مبيعات",
+       "hireDate": "2025-01-01T00:00:00.000Z",
+       "createdAt": "2026-08-19T14:45:00.000Z",
+       "updatedAt": "2026-08-19T14:45:00.000Z",
+       "deletedAt": null
+     },
+     "message": "Employee returned successfully"
+   }
+
+   Error Response (if not found):
+   {
+     "statusCode": 404,
+     "message": "Employee with id cm4employee123 not found",
+     "error": "Not Found"
+   }
+
+
+4) Update Employee
+   Method: PATCH
+   URL: /employees/:id
+   Description: Updates a specific employee partially.
+
+   Validation Rules:
+   - code: optional string
+   - fullName: optional string
+   - nationalId: optional string
+   - jobTitle: optional string
+   - hireDate: optional string (must be a valid ISO date string)
+
+   Request Example:
+   {
+     "jobTitle": "مدير فرع",
+     "fullName": "أحمد محمد محمود"
+   }
+
+   Response Example:
+   {
+     "data": {
+       "id": "cm4employee123",
+       "code": "EMP-001",
+       "fullName": "أحمد محمد محمود",
+       "nationalId": "1234567890",
+       "branchId": "cm4branch123",
+       "jobTitle": "مدير فرع",
+       "hireDate": "2025-01-01T00:00:00.000Z",
+       "createdAt": "2026-08-19T14:45:00.000Z",
+       "updatedAt": "2026-08-19T14:50:00.000Z",
+       "deletedAt": null
+     },
+     "message": "Employee updated successfully"
+   }
+
+   Error Response (if not found):
+   {
+     "statusCode": 404,
+     "message": "Employee with id cm4employee123 not found",
+     "error": "Not Found"
+   }
+
+   Error Response (if code already exists for another employee):
+   {
+     "statusCode": 400,
+     "message": "Employee with code EMP-001 already exists",
+     "error": "Bad Request"
+   }
+
+   Error Response (if national ID already exists for another employee):
+   {
+     "statusCode": 400,
+     "message": "Employee with national ID 1234567890 already exists",
+     "error": "Bad Request"
+   }
+
+
+5) Delete Employee
+   Method: DELETE
+   URL: /employees/:id
+   Description: Soft-deletes an employee (sets deletedAt timestamp).
+
+   Response Example:
+   {
+     "message": "Employee deleted successfully"
+   }
+
+   Error Response (if not found):
+   {
+     "statusCode": 404,
+     "message": "Employee with id cm4employee123 not found",
+     "error": "Not Found"
+   }

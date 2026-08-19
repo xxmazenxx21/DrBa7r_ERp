@@ -11,6 +11,7 @@ import { ProductsModule } from './products/products.module';
 import { ProdcutInventoryModule } from './prodcut-inventory/prodcut-inventory.module';
 import { CustomerModule } from './customer/customer.module';
 import { SupplierModule } from './supplier/supplier.module';
+import { EmployeesModule } from './employees/employees.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { SupplierModule } from './supplier/supplier.module';
     ProdcutInventoryModule,
     CustomerModule,
     SupplierModule,
+    EmployeesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

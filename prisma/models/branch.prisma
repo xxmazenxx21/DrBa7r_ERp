@@ -4,6 +4,7 @@ model Branch {
   code      String      @unique
   address   String?
   inventory Inventory[]
+  employees Employee[]
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
   deletedAt DateTime?
