@@ -9,6 +9,7 @@ import { CategoriesModule } from './categories/categories.module';
 import { ItemUnitModule } from './item-unit/item-unit.module';
 import { ProductsModule } from './products/products.module';
 import { ProdcutInventoryModule } from './prodcut-inventory/prodcut-inventory.module';
+import { CustomerModule } from './customer/customer.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { ProdcutInventoryModule } from './prodcut-inventory/prodcut-inventory.mo
     ItemUnitModule,
     ProductsModule,
     ProdcutInventoryModule,
+    CustomerModule,
   ],
   controllers: [AppController],
   providers: [AppService],
