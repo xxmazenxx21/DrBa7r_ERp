@@ -1,0 +1,32 @@
+enum Role {
+  SUPERADMIN
+  ADMIN
+  ACCOUNTENT
+  SALLES
+  USER
+}
+
+model User {
+  id       String  @id @default(cuid())
+  username String  @unique
+  password String
+  email    String? @unique
+
+  employeeId String?   @unique
+  employee   Employee? @relation(fields: [employeeId], references: [id])
+
+  branchId String?
+  branch   Branch? @relation(fields: [branchId], references: [id])
+
+  role Role @default(USER)
+
+  lastLoginDate DateTime?
+
+  postedInvoices   PurchaseInvoice[] @relation("PostedInvoices")
+  createdInvoices  PurchaseInvoice[] @relation("CreatedInvoices")
+  modifiedInvoices PurchaseInvoice[] @relation("ModifiedInvoices")
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+}

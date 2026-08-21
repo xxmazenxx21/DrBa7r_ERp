@@ -1,14 +1,14 @@
 model Supplier {
-
-  id             String    @id @default(cuid())
-  code           String    @unique
-  name           String
-  taxNumber      String?
-  contactPerson  String?
-  phone          String?
-  email          String?
-  openingBalance Decimal   @default(0) @db.Decimal(18, 2)
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-  deletedAt      DateTime?
+  id               String            @id @default(cuid())
+  code             String            @unique
+  name             String
+  taxNumber        String?
+  contactPerson    String?
+  phone            String?
+  email            String?
+  openingBalance   Decimal           @default(0) @db.Decimal(18, 2)
+  purchaseInvoices PurchaseInvoice[]
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  deletedAt        DateTime?
 }

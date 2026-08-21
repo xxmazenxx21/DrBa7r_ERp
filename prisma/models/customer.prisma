@@ -1,6 +1,5 @@
 model Customer {
-
-  id       String    @id @default(cuid())
+  id               String    @id @default(cuid())
   code             String    @unique
   name             String
   taxNumber        String?

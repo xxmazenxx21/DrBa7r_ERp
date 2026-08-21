@@ -1,13 +1,14 @@
 model Employee {
-  id           String    @id @default(cuid())
-  code         String    @unique
-  fullName     String
-  nationalId   String?   @unique
-  branchId     String
-  branch       Branch    @relation(fields: [branchId], references: [id])
-  jobTitle     String?
-  hireDate     DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  deletedAt    DateTime?
+  id         String    @id @default(cuid())
+  code       String    @unique
+  fullName   String
+  nationalId String?   @unique
+  branchId   String
+  branch     Branch    @relation(fields: [branchId], references: [id])
+  jobTitle   String?
+  hireDate   DateTime?
+  user       User?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  deletedAt  DateTime?
 }

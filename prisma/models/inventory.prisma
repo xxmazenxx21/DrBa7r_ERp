@@ -8,4 +8,5 @@ model Inventory {
   updatedAt          DateTime           @updatedAt
   deletedAt          DateTime?
   productInventories ProductInventory[]
+  purchaseInvoices   PurchaseInvoice[]
 }

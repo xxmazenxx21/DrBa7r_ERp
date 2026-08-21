@@ -1,0 +1,50 @@
+model PurchaseInvoice {
+  id                    String    @id @default(cuid())
+  code                  String    @unique
+  supplierInvoiceNumber String?
+  invoiceDate           DateTime  @db.Date
+  dueDate               DateTime? @db.Date
+
+  supplierId String
+  supplier   Supplier @relation(fields: [supplierId], references: [id])
+
+  branchId String
+  branch   Branch @relation(fields: [branchId], references: [id])
+
+  warehouseId String
+  warehouse   Inventory @relation(fields: [warehouseId], references: [id])
+
+  currencyId String?
+  currency   Currency? @relation(fields: [currencyId], references: [id])
+
+  exchangeRate Decimal @default(1) @db.Decimal(18, 4)
+  paymentType  Int // (نقدي / آجل)
+
+  subTotal        Decimal @db.Decimal(18, 2)
+  discountPercent Decimal @default(0) @db.Decimal(5, 2)
+  discountValue   Decimal @default(0) @db.Decimal(18, 2)
+  taxValue        Decimal @default(0) @db.Decimal(18, 2)
+  netTotal        Decimal @db.Decimal(18, 2)
+  paidAmount      Decimal @default(0) @db.Decimal(18, 2)
+  remainingAmount Decimal @default(0) @db.Decimal(18, 2)
+
+  status Int // (Draft/Confirmed/Posted/Cancelled)
+
+  isPosted     Boolean   @default(false)
+  postedDate   DateTime?
+  postedBy     String?
+  postedByUser User?     @relation("PostedInvoices", fields: [postedBy], references: [id])
+
+  notes String? @db.VarChar(500)
+
+  createdBy     String
+  createdByUser User     @relation("CreatedInvoices", fields: [createdBy], references: [id])
+  createdDate   DateTime @default(now())
+
+  modifiedBy     String?
+  modifiedByUser User?     @relation("ModifiedInvoices", fields: [modifiedBy], references: [id])
+  modifiedDate   DateTime? @updatedAt
+
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
+}
