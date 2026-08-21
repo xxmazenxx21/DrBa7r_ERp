@@ -77,14 +77,7 @@ export class ProductsService {
       throw new NotFoundException(`Product with ID ${id} not found`);
     }
 
-    if (updateProductDto.code && updateProductDto.code !== product.code) {
-      const existingProduct = await this.prisma.product.findFirst({
-        where: { code: updateProductDto.code, id: { not: id } },
-      });
-      if (existingProduct) {
-        throw new BadRequestException('Product code already in use');
-      }
-    }
+
 
     const updatedProduct = await this.prisma.product.update({
       where: { id },
