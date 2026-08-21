@@ -2,13 +2,18 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { UpdateBranchDto } from './dto/update-branch.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '../../generated/prisma/client.js';
+import { generateCode } from '../utils/codeGenratror/code.generator';
+import { CreateBranchDto } from './dto/create-branch.dto';
 
 @Injectable()
 export class BranchService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
-  async create(data: Prisma.BranchCreateInput) {
-    const branch = await this.prisma.branch.create({ data });
+  async create(createBranchDto: CreateBranchDto) {
+
+    createBranchDto.code = generateCode('branch')
+
+    const branch = await this.prisma.branch.create({ data: createBranchDto as any });
     return { data: branch, message: 'Branch created successfully' };
   }
 

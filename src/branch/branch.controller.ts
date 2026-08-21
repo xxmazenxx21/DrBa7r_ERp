@@ -10,11 +10,12 @@ import {
 import { BranchService } from './branch.service';
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
+import { Public } from '../decorators/public.decorator';
 
 @Controller('branch')
 export class BranchController {
-  constructor(private readonly branchService: BranchService) {}
-
+  constructor(private readonly branchService: BranchService) { }
+  @Public()
   @Post()
   create(@Body() createBranchDto: CreateBranchDto) {
     return this.branchService.create(createBranchDto);

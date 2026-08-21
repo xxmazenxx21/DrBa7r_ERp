@@ -2,12 +2,14 @@ import { Injectable } from '@nestjs/common';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { PrismaService } from '../prisma/prisma.service';
+import { generateCode } from '../utils/codeGenratror/code.generator';
 
 @Injectable()
 export class CategoriesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   async create(createCategoryDto: CreateCategoryDto) {
+    createCategoryDto.code = generateCode('category');
     const categoryExists = await this.prisma.categories.findUnique({
       where: { code: createCategoryDto.code },
     });

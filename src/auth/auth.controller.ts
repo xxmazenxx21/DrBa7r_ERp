@@ -8,11 +8,11 @@ import { Public } from '../decorators/public.decorator';
 export class AuthController {
   constructor(private readonly authService: AuthService) { }
 
-  @Post('/signup')
-  @Public()
-  create(@Body() createAuthDto: CreateAuthDto) {
-    return this.authService.signup(createAuthDto);
-  }
+  // @Post('/signup')
+  // @Public()
+  // create(@Body() createAuthDto: CreateAuthDto) {
+  //   return this.authService.signup(createAuthDto);
+  // }
 
   @Post('/login')
   @Public()

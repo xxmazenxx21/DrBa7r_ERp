@@ -6,6 +6,7 @@ export class CreateBranchDto {
   @MinLength(2)
   name: string;
 
+  @IsOptional()
   @IsString()
   @IsNotEmpty()
   @MinLength(2)

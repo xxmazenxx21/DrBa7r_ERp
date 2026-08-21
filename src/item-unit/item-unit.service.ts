@@ -2,12 +2,14 @@ import { Injectable } from '@nestjs/common';
 import { CreateItemUnitDto } from './dto/create-item-unit.dto';
 import { UpdateItemUnitDto } from './dto/update-item-unit.dto';
 import { PrismaService } from '../prisma/prisma.service';
+import { generateCode } from '../utils/codeGenratror/code.generator';
 
 @Injectable()
 export class ItemUnitService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   async create(createItemUnitDto: CreateItemUnitDto) {
+    createItemUnitDto.code = generateCode('unit')
     const exists = await this.prisma.itemUnit.findUnique({
       where: { code: createItemUnitDto.code },
     });
@@ -15,7 +17,7 @@ export class ItemUnitService {
       throw new Error(
         `ItemUnit with code ${createItemUnitDto.code} already exists`,
       );
-    const item = await this.prisma.itemUnit.create({ data: createItemUnitDto });
+    const item = await this.prisma.itemUnit.create({ data: createItemUnitDto as any });
     return { data: item, message: 'ItemUnit created successfully' };
   }
 

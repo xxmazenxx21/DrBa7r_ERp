@@ -1,0 +1,120 @@
+Authentication & Authorization API Documentation
+==============================================
+
+Base URL
+--------
+http://localhost:3000 (or production URL)
+
+Overview
+--------
+The backend is secured globally using JWT (JSON Web Tokens). Every endpoint requires a valid Bearer token in the Authorization header by default, unless the endpoint is explicitly marked as public (like Signup and Login). 
+Furthermore, Role-Based Access Control (RBAC) is enforced.
+
+How to Authenticate
+-------------------
+When a user logs in, the backend returns an `access_token`. 
+For all subsequent requests, the frontend must include this token in the HTTP Headers:
+
+Authorization: Bearer <your_access_token_here>
+
+
+---------------------------------------------------------
+AUTH APIs
+---------------------------------------------------------
+
+1) Signup (Register User)
+   Method: POST
+   URL: /auth/signup
+   Access: Public
+   Description: Creates a new user account with a securely hashed password.
+
+   Validation Rules:
+   - username: required string
+   - password: required string (min 6 characters)
+   - role: required enum (SUPERADMIN, ADMIN, ACCOUNTENT, SALLES, USER)
+   - email: optional string (must be valid email format)
+   - employeeId: optional string
+   - branchId: optional string
+
+   Request Example:
+   {
+     "username": "drba7r",
+     "password": "drba7r12345",
+     "role": "SUPERADMIN",
+     "email": "drba7r@example.com"
+   }
+
+   Response Example:
+   {
+     "id": "cm4auth123...",
+     "username": "drba7r",
+     "email": "drba7r@example.com",
+     "employeeId": null,
+     "branchId": null,
+     "role": "SUPERADMIN",
+     "lastLoginDate": null,
+     "createdAt": "2026-08-21T18:25:33.000Z",
+     "updatedAt": "2026-08-21T18:25:33.000Z",
+     "deletedAt": null
+   }
+   *(Note: The hashed password is automatically stripped from the response for security reasons)*
+
+2) Login
+   Method: POST
+   URL: /auth/login
+   Access: Public
+   Description: Authenticates a user, updates their `lastLoginDate`, and returns a JWT access token.
+
+   Validation Rules:
+   - username: required string
+   - password: required string
+
+   Request Example:
+   {
+     "username": "drba7r",
+     "password": "drba7r12345"
+   }
+
+   Response Example (201 Created):
+   {
+     "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+     "user": {
+       "id": "cm4auth123...",
+       "username": "drba7r",
+       "role": "SUPERADMIN"
+     }
+   }
+
+   Error Response (401 Unauthorized - Bad username or password):
+   {
+     "message": "Invalid credentials",
+     "error": "Unauthorized",
+     "statusCode": 401
+   }
+
+
+---------------------------------------------------------
+Frontend Integration Guide
+---------------------------------------------------------
+
+1. Handling Missing/Expired Tokens (401 Unauthorized)
+If you attempt to access a protected route without a token, or if the token has expired (or is invalid), the API will return:
+{
+  "message": "Invalid or expired token", // or "Authentication required"
+  "error": "Unauthorized",
+  "statusCode": 401
+}
+Action: Intercept 401 responses in your Axios/Fetch client, clear the user's session state, and redirect them back to the Login screen.
+
+2. Handling Role Restrictions (403 Forbidden)
+Some routes are restricted by role (e.g. only SUPERADMIN can access). If an authenticated user tries to access a route they don't have permission for, the API will return:
+{
+  "message": "You do not have the required roles to access this resource",
+  "error": "Forbidden",
+  "statusCode": 403
+}
+Action: Show a "Permission Denied" or "Not Authorized" toast/alert in the UI.
+
+3. Global Configuration
+- The JWT expiration time is configured to a long duration (`3650d` / ~10 years) in `app.module.ts`.
+- Every controller route across the entire application is protected by default. If a route needs to be publicly accessible, the backend developer must add the `@Public()` decorator to that specific endpoint.

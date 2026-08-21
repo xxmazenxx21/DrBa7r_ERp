@@ -12,24 +12,24 @@ export class AuthService {
     private readonly jwtService: JwtService
   ) { }
 
-  async signup(createAuthDto: CreateAuthDto) {
-    const password = await hashPassword(createAuthDto.password);
+  // async signup(createAuthDto: CreateAuthDto) {
+  //   const password = await hashPassword(createAuthDto.password);
 
-    const user = await this.prisma.user.create({
-      data: { ...createAuthDto, password },
-    });
+  //   const user = await this.prisma.user.create({
+  //     data: { ...createAuthDto, password },
+  //   });
 
-    // Don't return the password
-    const { password: _, ...result } = user;
-    return result;
-  }
+  //   // Don't return the password
+  //   const { password: _, ...result } = user;
+  //   return result;
+  // }
 
   async login(loginDto: LoginDto) {
     const user = await this.prisma.user.findUnique({
       where: { username: loginDto.username }
     });
 
-    if (!user) {
+    if (!user || user.deletedAt) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
