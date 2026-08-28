@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { PrismaService } from '../prisma/prisma.service';
+import { generateCode } from '../utils/codeGenratror/code.generator';
 
 @Injectable()
 export class EmployeesService {
@@ -23,6 +24,7 @@ export class EmployeesService {
     if (existingCode) {
       throw new BadRequestException(`Employee with code ${createEmployeeDto.code} already exists`);
     }
+    createEmployeeDto.code = generateCode("EMP");
 
     if (createEmployeeDto.nationalId) {
       const existingNationalId = await this.prisma.employee.findFirst({

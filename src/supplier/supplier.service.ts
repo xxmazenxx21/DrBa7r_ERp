@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { CreateSupplierDto } from './dto/create-supplier.dto';
 import { UpdateSupplierDto } from './dto/update-supplier.dto';
 import { PrismaService } from '../prisma/prisma.service';
+import { generateCode } from '../utils/codeGenratror/code.generator';
 
 @Injectable()
 export class SupplierService {
@@ -11,7 +12,7 @@ export class SupplierService {
     const existingSupplier = await this.prisma.supplier.findUnique({
       where: { code: createSupplierDto.code }
     });
-    
+    createSupplierDto.code = generateCode("SUP");
     if (existingSupplier) {
       throw new BadRequestException('this supplier already exists');
     }
