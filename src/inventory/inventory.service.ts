@@ -8,6 +8,13 @@ export class InventoryService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(branchId: string, createInventoryDto: CreateInventoryDto) {
+    const branch = await this.prisma.branch.findFirst({
+      where: { id: branchId, deletedAt: null },
+    });
+    if (!branch) {
+      throw new NotFoundException(`Branch with id ${branchId} not found`);
+    }
+
     const inventory = await this.prisma.inventory.create({
       data: {
         branchId,

@@ -2,7 +2,7 @@ enum Role {
   SUPERADMIN
   ADMIN
   ACCOUNTENT
-  SALLES
+  SALES
   USER
 }
 

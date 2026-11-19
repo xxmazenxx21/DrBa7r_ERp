@@ -122,8 +122,8 @@ export class UsersService {
 
     const updateData: any = { ...updateUserDto };
 
-    if (updateData.role) {
-      updateData.role = updateData.role as any;
+    if (updateData.password) {
+      updateData.password = await hashPassword(updateData.password);
     }
 
     updateData.updatedAt = new Date();
@@ -143,7 +143,7 @@ export class UsersService {
         updatedAt: true
       }
     });
-    return { message: "User updated successfully" };
+    return { data: user, message: "User updated successfully" };
   }
 
   async remove(id: string) {

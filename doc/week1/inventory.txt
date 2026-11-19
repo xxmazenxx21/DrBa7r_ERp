@@ -1,0 +1,155 @@
+Inventory (Warehouse) API Documentation
+=======================================
+
+Base URL
+--------
+Production:      https://drba7rerp-production.up.railway.app
+Local (Docker):  http://localhost:3000
+
+Authentication
+--------------
+All endpoints require:  Authorization: Bearer <access_token>   (see auth.txt)
+
+An inventory = a warehouse. Every inventory belongs to one branch.
+
+---------------------------------------------------------
+INVENTORY APIs
+---------------------------------------------------------
+
+1) Create Inventory By Branch ID
+   Method: POST
+   URL: /inventory/branch/:branchId
+   Description: Creates a new inventory linked to a branch.
+
+   Path Parameters:
+   - branchId: required string (id of an existing branch)
+
+   Validation Rules:
+   - name: required string, minimum 2 characters
+   - address: required string, minimum 2 characters
+
+   Request Example:
+   POST /inventory/branch/cm4branch123
+   {
+     "name": "مخزن القاهره",
+     "address": "القاهره، المنطقة الصناعية"
+   }
+
+   Response Example (201):
+   {
+     "data": {
+       "id": "cm4inventory789",
+       "name": "مخزن القاهره",
+       "branchId": "cm4branch123",
+       "address": "القاهره، المنطقة الصناعية",
+       "createdAt": "2026-08-07T00:00:00.000Z",
+       "updatedAt": "2026-08-07T00:00:00.000Z",
+       "deletedAt": null
+     },
+     "message": "Inventory created successfully"
+   }
+
+   Error Response (404 - branch not found or deleted):
+   {
+     "statusCode": 404,
+     "message": "Branch with id cm4branch123 not found",
+     "error": "Not Found"
+   }
+
+2) Get All Inventories By Branch ID
+   Method: GET
+   URL: /inventory/branch/:branchId
+   Description: Returns all active (not deleted) inventories of a branch, newest first.
+
+   Request Example:
+   GET /inventory/branch/cm4branch123
+
+   Response Example:
+   {
+     "data": [
+       {
+         "id": "cm4inventory789",
+         "name": "مخزن القاهره",
+         "branchId": "cm4branch123",
+         "address": "القاهره، المنطقة الصناعية",
+         "createdAt": "2026-08-07T00:00:00.000Z",
+         "updatedAt": "2026-08-07T00:00:00.000Z",
+         "deletedAt": null
+       }
+     ],
+     "message": "Inventories returned successfully"
+   }
+
+   Error Response (404 - branch not found or deleted):
+   {
+     "statusCode": 404,
+     "message": "Branch with id cm4branch123 not found",
+     "error": "Not Found"
+   }
+
+3) Get Inventory By ID
+   Method: GET
+   URL: /inventory/:id
+
+   Example Request:
+   GET /inventory/cm4inventory789
+
+   Response Example:
+   {
+     "data": {
+       "id": "cm4inventory789",
+       "name": "مخزن القاهره",
+       "branchId": "cm4branch123",
+       "address": "القاهره، المنطقة الصناعية",
+       "createdAt": "2026-08-07T00:00:00.000Z",
+       "updatedAt": "2026-08-07T00:00:00.000Z",
+       "deletedAt": null
+     },
+     "message": "Inventory returned successfully"
+   }
+
+   Error Response (404):
+   {
+     "statusCode": 404,
+     "message": "Inventory with id cm4inventory789 not found",
+     "error": "Not Found"
+   }
+
+4) Update Inventory
+   Method: PATCH
+   URL: /inventory/:id
+   Description: Partial update (name and/or address).
+
+   Request Example:
+   {
+     "name": "مخزن القاهره الرئيسي",
+     "address": "القاهره، مدينة نصر"
+   }
+
+   Response Example:
+   {
+     "data": {
+       "id": "cm4inventory789",
+       "name": "مخزن القاهره الرئيسي",
+       "branchId": "cm4branch123",
+       "address": "القاهره، مدينة نصر",
+       "createdAt": "2026-08-07T00:00:00.000Z",
+       "updatedAt": "2026-08-07T03:00:00.000Z",
+       "deletedAt": null
+     },
+     "message": "Inventory updated successfully"
+   }
+
+   Error Response (404): same as Get Inventory By ID.
+
+5) Delete Inventory
+   Method: DELETE
+   URL: /inventory/:id
+   Description: Soft delete (sets deletedAt).
+
+   Response Example:
+   {
+     "message": "Inventory deleted successfully"
+   }
+
+   Error Response (404): same as Get Inventory By ID.

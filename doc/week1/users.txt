@@ -1,0 +1,227 @@
+Users API Documentation
+=======================
+
+Base URL
+--------
+Production:      https://drba7rerp-production.up.railway.app
+Local (Docker):  http://localhost:3000
+
+Authentication
+--------------
+All endpoints require:  Authorization: Bearer <access_token>
+EXCEPT POST /users/login, which is public.
+Get the token from POST /auth/login or POST /users/login (see auth.txt).
+
+Overview
+--------
+Users are the accounts that log into the ERP. A user can optionally be linked
+to an Employee and/or a Branch, and always has one Role.
+The password is NEVER returned by any endpoint.
+
+Role values (field "role")
+--------------------------
+    SUPERADMIN | ADMIN | ACCOUNTENT | SALES | USER
+
+
+---------------------------------------------------------
+1) Create User
+---------------------------------------------------------
+Method: POST
+URL: /users
+
+Validation Rules:
+- username   : required string (must be unique)
+- password   : required string, minimum 6 characters (stored hashed)
+- role       : required, one of the role values above
+- email      : optional, valid email (must be unique)
+- employeeId : optional string (id of an existing employee; one user per employee)
+- branchId   : optional string (id of an existing branch)
+
+Request Example:
+{
+  "username": "ahmed.sales",
+  "password": "secret123",
+  "role": "SALES",
+  "email": "ahmed@example.com",
+  "employeeId": "cm4employee789",
+  "branchId": "cm4branch123"
+}
+
+Success Response (201):
+{
+  "message": "user created successfully"
+}
+
+IMPORTANT: the new user's id is NOT returned. If you need it, call GET /users
+and find the user by username.
+
+Error Cases:
+- Missing/invalid fields                      -> 400 (validation error)
+- Duplicate username / email / employeeId     -> 409
+    { "statusCode": 409, "message": "username already exists", "error": "Conflict" }
+    (message is "email already exists" / "employeeId already exists" accordingly)
+- employeeId or branchId that does not exist  -> 400
+    { "statusCode": 400, "message": "branchId does not exist", "error": "Bad Request" }
+
+
+---------------------------------------------------------
+2) Get All Users
+---------------------------------------------------------
+Method: GET
+URL: /users
+Description: All active (not deleted) users.
+
+Success Response (200):
+{
+  "data": [
+    {
+      "id": "cm4user123",
+      "username": "admin",
+      "email": null,
+      "role": "SUPERADMIN",
+      "employeeId": null,
+      "branchId": null,
+      "lastLoginDate": "2026-08-21T18:30:00.000Z",
+      "createdAt": "2026-08-21T18:25:33.000Z",
+      "updatedAt": "2026-08-21T18:30:00.000Z"
+    }
+  ],
+  "message": "Users retrieved successfully"
+}
+
+
+---------------------------------------------------------
+3) Get User By ID
+---------------------------------------------------------
+Method: GET
+URL: /users/:id
+
+Example Request:
+GET /users/cm4user123
+
+Success Response (200):
+{
+  "data": {
+    "id": "cm4user123",
+    "username": "admin",
+    "email": null,
+    "role": "SUPERADMIN",
+    "employeeId": null,
+    "branchId": null,
+    "lastLoginDate": "2026-08-21T18:30:00.000Z",
+    "createdAt": "2026-08-21T18:25:33.000Z",
+    "updatedAt": "2026-08-21T18:30:00.000Z"
+  },
+  "message": "User retrieved successfully"
+}
+
+Error Response (404 - not found or deleted):
+{
+  "statusCode": 404,
+  "message": "User with id cm4user123 not found",
+  "error": "Not Found"
+}
+
+
+---------------------------------------------------------
+4) Update User
+---------------------------------------------------------
+Method: PATCH
+URL: /users/:id
+Description: Partial update. Allowed fields: username, password, role,
+email, employeeId, branchId (all optional).
+Sending "password" changes the user's password (min 6 characters, stored hashed).
+
+Request Example (change role and email):
+{
+  "role": "ADMIN",
+  "email": "newmail@example.com"
+}
+
+Request Example (change password):
+{
+  "password": "newpass123"
+}
+
+Success Response (200):
+{
+  "data": {
+    "id": "cm4user123",
+    "username": "ahmed.sales",
+    "email": "newmail@example.com",
+    "role": "ADMIN",
+    "employeeId": null,
+    "branchId": null,
+    "lastLoginDate": "2026-08-21T18:30:00.000Z",
+    "createdAt": "2026-08-21T18:25:33.000Z",
+    "updatedAt": "2026-08-21T18:40:00.000Z"
+  },
+  "message": "User updated successfully"
+}
+
+Error Cases:
+- User not found / deleted        -> 404
+- Invalid role / bad email / password shorter than 6 -> 400
+- Duplicate username / email / employeeId            -> 409 (same body as Create)
+- employeeId or branchId that does not exist          -> 400 (same body as Create)
+
+
+---------------------------------------------------------
+5) Delete User
+---------------------------------------------------------
+Method: DELETE
+URL: /users/:id
+Description: Soft delete. The user disappears from lists and can no longer log in.
+
+Success Response (200):
+{
+  "message": "User deleted successfully"
+}
+
+Error Response (404 - not found or already deleted):
+{
+  "statusCode": 404,
+  "message": "User with id cm4user123 not found",
+  "error": "Not Found"
+}
+
+
+---------------------------------------------------------
+6) Login
+---------------------------------------------------------
+Method: POST
+URL: /users/login
+Access: Public (no token needed)
+Description: Exactly the same as POST /auth/login - same body, same response,
+same errors. Use either one.
+
+Request Example:
+{
+  "username": "admin",
+  "password": "admin123"
+}
+
+Success Response (201):
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "user": {
+    "id": "cm4user123",
+    "username": "admin",
+    "role": "SUPERADMIN"
+  }
+}
+
+Error Response (401 - wrong username/password, or user is deleted):
+{
+  "message": "Invalid credentials",
+  "error": "Unauthorized",
+  "statusCode": 401
+}
+
+
+---------------------------------------------------------
+Related APIs you need BEFORE calling POST /users
+---------------------------------------------------------
+A) branchId:   GET /branch                       -> data[i].id
+B) employeeId: GET /branch                       -> pick a branch id
+               GET /employees/branch/{branchId}  -> data[i].id

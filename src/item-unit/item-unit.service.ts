@@ -1,4 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { CreateItemUnitDto } from './dto/create-item-unit.dto';
 import { UpdateItemUnitDto } from './dto/update-item-unit.dto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -10,13 +14,6 @@ export class ItemUnitService {
 
   async create(createItemUnitDto: CreateItemUnitDto) {
     createItemUnitDto.code = generateCode('unit')
-    const exists = await this.prisma.itemUnit.findUnique({
-      where: { code: createItemUnitDto.code },
-    });
-    if (exists)
-      throw new Error(
-        `ItemUnit with code ${createItemUnitDto.code} already exists`,
-      );
     const item = await this.prisma.itemUnit.create({ data: createItemUnitDto as any });
     return { data: item, message: 'ItemUnit created successfully' };
   }
@@ -28,13 +25,13 @@ export class ItemUnitService {
 
   async findOne(id: string) {
     const item = await this.prisma.itemUnit.findUnique({ where: { id } });
-    if (!item) throw new Error(`ItemUnit with id ${id} not found`);
+    if (!item) throw new NotFoundException(`ItemUnit with id ${id} not found`);
     return { data: item, message: 'ItemUnit returned successfully' };
   }
 
   async update(id: string, updateItemUnitDto: UpdateItemUnitDto) {
     const item = await this.prisma.itemUnit.findUnique({ where: { id } });
-    if (!item) throw new Error(`ItemUnit with id ${id} not found`);
+    if (!item) throw new NotFoundException(`ItemUnit with id ${id} not found`);
     const updated = await this.prisma.itemUnit.update({
       where: { id },
       data: updateItemUnitDto,
@@ -44,7 +41,15 @@ export class ItemUnitService {
 
   async remove(id: string) {
     const item = await this.prisma.itemUnit.findUnique({ where: { id } });
-    if (!item) throw new Error(`ItemUnit with id ${id} not found`);
+    if (!item) throw new NotFoundException(`ItemUnit with id ${id} not found`);
+    const productsCount = await this.prisma.product.count({
+      where: { primaryIteamUnitId: id },
+    });
+    if (productsCount > 0) {
+      throw new BadRequestException(
+        `ItemUnit is used by ${productsCount} product(s) and cannot be deleted`,
+      );
+    }
     await this.prisma.itemUnit.delete({ where: { id } });
     return { data: item, message: 'ItemUnit deleted successfully' };
   }

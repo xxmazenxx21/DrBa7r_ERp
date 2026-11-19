@@ -17,15 +17,6 @@ export class EmployeesService {
       throw new NotFoundException(`Branch with id ${branchId} not found`);
     }
 
-    const existingCode = await this.prisma.employee.findFirst({
-      where: { code: createEmployeeDto.code, deletedAt: null },
-    });
-
-    if (existingCode) {
-      throw new BadRequestException(`Employee with code ${createEmployeeDto.code} already exists`);
-    }
-    createEmployeeDto.code = generateCode("EMP");
-
     if (createEmployeeDto.nationalId) {
       const existingNationalId = await this.prisma.employee.findFirst({
         where: { nationalId: createEmployeeDto.nationalId, deletedAt: null },
@@ -38,6 +29,7 @@ export class EmployeesService {
     const employee = await this.prisma.employee.create({
       data: {
         ...createEmployeeDto,
+        code: generateCode('EMP'),
         branchId,
       },
     });

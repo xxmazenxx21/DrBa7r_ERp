@@ -8,16 +8,9 @@ import { generateCode } from '../utils/codeGenratror/code.generator';
 export class CustomerService {
   constructor(private readonly prisma: PrismaService) { }
   async create(createCustomerDto: CreateCustomerDto) {
-    const Customer = await this.prisma.customer.findUnique({
-      where: { code: createCustomerDto.code }
-    })
-createCustomerDto.code  = generateCode("CUS");
-    
-    if (Customer) throw new BadRequestException('this customer already exists')
-
     const newcustomer = await this.prisma.customer.create({
-      data: { ...createCustomerDto }
-    })
+      data: { ...createCustomerDto, code: generateCode('CUS') },
+    });
     return {
       message: "customer created successfully",
       customer: newcustomer
@@ -29,10 +22,6 @@ createCustomerDto.code  = generateCode("CUS");
     const customers = await this.prisma.customer.findMany({
       where: { deletedAt: null }
     });
-
-    if (customers.length === 0) {
-      return { message: "no customers found" };
-    }
 
     return customers;
   }

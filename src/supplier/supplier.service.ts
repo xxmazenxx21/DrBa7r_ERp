@@ -9,16 +9,8 @@ export class SupplierService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(createSupplierDto: CreateSupplierDto) {
-    const existingSupplier = await this.prisma.supplier.findUnique({
-      where: { code: createSupplierDto.code }
-    });
-    createSupplierDto.code = generateCode("SUP");
-    if (existingSupplier) {
-      throw new BadRequestException('this supplier already exists');
-    }
-
     const newSupplier = await this.prisma.supplier.create({
-      data: { ...createSupplierDto }
+      data: { ...createSupplierDto, code: generateCode('SUP') },
     });
 
     return {
@@ -31,10 +23,6 @@ export class SupplierService {
     const suppliers = await this.prisma.supplier.findMany({
       where: { deletedAt: null }
     });
-
-    if (suppliers.length === 0) {
-      return { message: "no suppliers found" };
-    }
 
     return suppliers;
   }

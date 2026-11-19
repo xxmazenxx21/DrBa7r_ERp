@@ -1,4 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -10,14 +14,6 @@ export class CategoriesService {
 
   async create(createCategoryDto: CreateCategoryDto) {
     createCategoryDto.code = generateCode('category');
-    const categoryExists = await this.prisma.categories.findUnique({
-      where: { code: createCategoryDto.code },
-    });
-    if (categoryExists) {
-      throw new Error(
-        `Category with code ${createCategoryDto.code} already exists`,
-      );
-    }
     const category = await this.prisma.categories.create({
       data: createCategoryDto,
     });
@@ -35,7 +31,7 @@ export class CategoriesService {
   async findOne(id: string) {
     const category = await this.prisma.categories.findUnique({ where: { id } });
     if (!category) {
-      throw new Error(`Category with id ${id} not found`);
+      throw new NotFoundException(`Category with id ${id} not found`);
     }
     return { data: category, message: 'Category returned successfully' };
   }
@@ -43,18 +39,27 @@ export class CategoriesService {
   async update(id: string, updateCategoryDto: UpdateCategoryDto) {
     const category = await this.prisma.categories.findUnique({ where: { id } });
     if (!category) {
-      throw new Error(`Category with id ${id} not found`);
+      throw new NotFoundException(`Category with id ${id} not found`);
     }
-    return await this.prisma.categories.update({
+    const updated = await this.prisma.categories.update({
       where: { id },
       data: updateCategoryDto,
     });
+    return { data: updated, message: 'Category updated successfully' };
   }
 
   async remove(id: string) {
     const category = await this.prisma.categories.findUnique({ where: { id } });
     if (!category) {
-      throw new Error(`Category with id ${id} not found`);
+      throw new NotFoundException(`Category with id ${id} not found`);
+    }
+    const productsCount = await this.prisma.product.count({
+      where: { categoryId: id },
+    });
+    if (productsCount > 0) {
+      throw new BadRequestException(
+        `Category is used by ${productsCount} product(s) and cannot be deleted`,
+      );
     }
     await this.prisma.categories.delete({ where: { id } });
     return {
