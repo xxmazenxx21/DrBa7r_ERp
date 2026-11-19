@@ -1,98 +1,160 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# DrBa7r ERP: Backend API
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+ERP backend built with **NestJS 11**, **Prisma 7** and **PostgreSQL**. It covers branches, warehouses, products, stock, customers, suppliers, employees and users, with JWT login.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+---
 
-## Description
+## Run with Docker (recommended)
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+### 1. Install Docker
 
-## Project setup
+- **Windows / Mac:** install [Docker Desktop](https://www.docker.com/products/docker-desktop/) and open it. It must be running.
+- **Linux:** install Docker Engine plus the Compose plugin.
+
+Check that it works:
 
 ```bash
-$ npm install
+docker --version
+docker compose version
 ```
 
-## Compile and run the project
+### 2. Get the code
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+git clone https://github.com/xxmazenxx21/DrBa7r_ERp.git
+cd DrBa7r_ERp
 ```
 
-## Run tests
+### 3. Start everything (one command)
 
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+docker compose up -d --build
 ```
 
-## Deployment
+The first run takes a few minutes because it downloads images and installs packages. This command:
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+1. starts a **PostgreSQL** database
+2. builds the API
+3. creates all database tables (migrations)
+4. creates the first admin user if the database is empty
+5. starts the API on **http://localhost:3000**
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+Check that it's running:
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+docker compose ps          # both "db" and "api" should be "running"
+docker compose logs -f api # wait for "Nest application successfully started" (Ctrl+C to exit logs)
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+### 4. Log in
 
-## Resources
+There is no signup. Use the admin account that is created automatically:
 
-Check out a few resources that may come in handy when working with NestJS:
+| username | password   | role       |
+|----------|------------|------------|
+| `admin`  | `admin123` | SUPERADMIN |
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+```bash
+curl -X POST http://localhost:3000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"admin123"}'
+```
 
-## Support
+Copy the `access_token` from the response and send it on every other request:
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+```
+Authorization: Bearer <access_token>
+```
 
-## Stay in touch
+To create more users, call `POST /users` with that token.
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+---
 
-## License
+## Everyday commands
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+| What                                  | Command                          |
+|---------------------------------------|----------------------------------|
+| Start                                 | `docker compose up -d`           |
+| Stop (keeps data)                     | `docker compose down`            |
+| See API logs                          | `docker compose logs -f api`     |
+| Rebuild after pulling new code        | `docker compose up -d --build`   |
+| Restart only the API                  | `docker compose restart api`     |
+| **Delete everything, including data** | `docker compose down -v`         |
+
+### About your data
+
+The database is stored in a Docker **volume** named `pgdata`.
+
+- `docker compose down` and deleting or rebuilding containers keep your data.
+- Only `docker compose down -v` deletes the data, so use it only when you want a fresh, empty database.
+
+After you pull new code, run `docker compose up -d --build`. New database migrations are applied automatically on start, and existing data is kept.
+
+---
+
+## Configuration (optional)
+
+Everything works with the defaults. To change them, create a `.env` file next to `docker-compose.yml`. Copy `.env.example` as a starting point:
+
+```bash
+cp .env.example .env
+```
+
+| Variable            | Default                   | Meaning                           |
+|---------------------|---------------------------|-----------------------------------|
+| `API_PORT`          | `3000`                    | Port of the API on your machine   |
+| `DB_PORT`           | `5433`                    | Port of Postgres on your machine  |
+| `POSTGRES_USER`     | `erp`                     | Database user                     |
+| `POSTGRES_PASSWORD` | `erp_password`            | Database password                 |
+| `POSTGRES_DB`       | `erp`                     | Database name                     |
+| `JWT_SECRET`        | `change_me_in_production` | Secret used to sign login tokens  |
+| `ADMIN_USERNAME`    | `admin`                   | First admin's username            |
+| `ADMIN_PASSWORD`    | `admin123`                | First admin's password            |
+
+Then run `docker compose up -d --build` again.
+
+> `ADMIN_USERNAME` / `ADMIN_PASSWORD` only apply when the database has **no users yet**. To use them on an existing database, reset it with `docker compose down -v`. That deletes all data.
+
+### Connect to the database (optional)
+
+You can use pgAdmin, DBeaver, TablePlus or another database tool:
+
+```
+Host: localhost   Port: 5433   User: erp   Password: erp_password   Database: erp
+```
+
+---
+
+## Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| `port is already allocated` | Another app is using port 3000 or 5433. Set `API_PORT=3001` or `DB_PORT=5434` in `.env`, then run `docker compose up -d`. |
+| `Cannot connect to the Docker daemon` | Docker Desktop isn't running. Open it and try again. |
+| API keeps restarting | Run `docker compose logs api` to see the error. |
+| Login returns 401 | Check the username and password. If you changed `ADMIN_*` after the first run, see the note in Configuration. |
+| Want a completely fresh start | `docker compose down -v`, then `docker compose up -d --build`. |
+
+---
+
+## API documentation (for the frontend)
+
+The docs are in [`doc/`](doc/), organized by week, with one `.txt` file per module. Start with
+[`doc/week1/00-overview.txt`](doc/week1/00-overview.txt). It explains the login, the general rules and the errors, and links every module.
+
+---
+
+## Run without Docker (developers)
+
+Requirements: Node.js 22+ and a running PostgreSQL.
+
+```bash
+npm install
+# create .env with:
+#   DATABASE_URL=postgresql://USER:PASSWORD@localhost:5432/DBNAME?schema=public
+#   JWT_SECRET=some_secret
+npx prisma migrate dev    # create tables + generate Prisma client
+npm run start:dev         # http://localhost:3000, auto-reload
+```
+
+Running without Docker doesn't create the admin user automatically. Run `node scripts/seed-admin.js` once, after the migrations.

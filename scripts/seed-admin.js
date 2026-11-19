@@ -2,6 +2,9 @@
 // Needed because every route except /auth/login requires a JWT and
 // POST /users itself is protected — a fresh DB would otherwise be unusable.
 // Safe to run on every container start (no-op once any user exists).
+try {
+  require('dotenv/config'); // local runs read .env; in Docker env vars are already set
+} catch {}
 const { Client } = require('pg');
 const bcrypt = require('bcrypt');
 const { randomUUID } = require('crypto');
