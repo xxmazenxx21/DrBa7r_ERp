@@ -1,87 +1,72 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { CreateSupplierDto } from './dto/create-supplier.dto';
 import { UpdateSupplierDto } from './dto/update-supplier.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { generateCode } from '../utils/codeGenratror/code.generator';
+import { ok } from '../utils/response/response';
 
 @Injectable()
 export class SupplierService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(createSupplierDto: CreateSupplierDto) {
-    const newSupplier = await this.prisma.supplier.create({
-      data: { ...createSupplierDto, code: generateCode('SUP') },
+  async create(dto: CreateSupplierDto) {
+    const supplier = await this.prisma.supplier.create({
+      data: {
+        code: generateCode('SUP'),
+        name: dto.name,
+        taxNumber: dto.taxNumber,
+        contactPerson: dto.contactPerson,
+        phone: dto.phone,
+        email: dto.email,
+        openingBalance: dto.openingBalance,
+      },
     });
-
-    return {
-      message: "supplier created successfully",
-      supplier: newSupplier
-    };
+    return ok('supplier created successfully', supplier);
   }
 
   async findAll() {
     const suppliers = await this.prisma.supplier.findMany({
-      where: { deletedAt: null }
+      where: { deletedAt: null },
+      orderBy: { createdAt: 'desc' },
     });
-
-    return suppliers;
+    return ok('Suppliers returned successfully', suppliers);
   }
 
-  async findOne(id: string) {
+  private async getActive(id: string, notFoundMessage: string) {
     const supplier = await this.prisma.supplier.findFirst({
-      where: { id, deletedAt: null }
+      where: { id, deletedAt: null },
     });
-
-    if (!supplier) {
-      throw new NotFoundException('supplier does not exist');
-    }
-
+    if (!supplier) throw new NotFoundException(notFoundMessage);
     return supplier;
   }
 
-  async update(id: string, updateSupplierDto: UpdateSupplierDto) {
-    const supplier = await this.prisma.supplier.findFirst({
-      where: { id, deletedAt: null }
-    });
-    
-    if (!supplier) {
-      throw new NotFoundException("supplier not found");
-    }
-    
-    if (updateSupplierDto.code && updateSupplierDto.code !== supplier.code) {
-      const checkCode = await this.prisma.supplier.findFirst({
-        where: { code: updateSupplierDto.code }
-      });
-      if (checkCode) {
-        throw new BadRequestException("this code already exists");
-      }
-    }
+  async findOne(id: string) {
+    const supplier = await this.getActive(id, 'supplier does not exist');
+    return ok('Supplier returned successfully', supplier);
+  }
 
-    const updatedSupplier = await this.prisma.supplier.update({
+  async update(id: string, dto: UpdateSupplierDto) {
+    await this.getActive(id, 'supplier not found');
+    const supplier = await this.prisma.supplier.update({
       where: { id },
-      data: updateSupplierDto,
+      data: {
+        name: dto.name,
+        taxNumber: dto.taxNumber,
+        contactPerson: dto.contactPerson,
+        phone: dto.phone,
+        email: dto.email,
+        openingBalance: dto.openingBalance,
+      },
     });
-
-    return {
-      message: 'supplier updated successfully',
-      supplier: updatedSupplier,
-    };
+    return ok('supplier updated successfully', supplier);
   }
 
   async remove(id: string) {
-    const supplier = await this.prisma.supplier.findFirst({
-      where: { id, deletedAt: null }
-    });
-    
-    if (!supplier) {
-      throw new NotFoundException("supplier not found");
-    }
-
+    await this.getActive(id, 'supplier not found');
     await this.prisma.supplier.update({
       where: { id },
       data: { deletedAt: new Date() },
     });
-
-    return { message: 'supplier deleted successfully' };
+    return ok('supplier deleted successfully', null);
   }
 }

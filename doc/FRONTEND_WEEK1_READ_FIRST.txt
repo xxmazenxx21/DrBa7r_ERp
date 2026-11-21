@@ -1,0 +1,337 @@
+FRONTEND - READ THIS FIRST (Week 1 backend changes)
+===================================================
+
+What is this?
+-------------
+The backend changed a lot since you last integrated. Most changes are
+BREAKING: your current code will stop working until you update it.
+
+Why: every endpoint now answers in the same shape, only SUPERADMIN users can
+use the API for now, the server rejects fields it does not know, and nothing
+is ever deleted for real anymore (soft delete everywhere).
+
+How to read the docs:
+  1. Read THIS file (what changed, what to fix).
+  2. Then read doc/week1/00-overview.txt (general rules, errors).
+  3. Then the module files in doc/week1/ (exact bodies for every endpoint).
+
+Base URL (unchanged)
+--------------------
+Production:      https://drba7rerp-production.up.railway.app
+Local (Docker):  http://localhost:3000
+
+
+=====================================================================
+PART 1 - BREAKING CHANGES (you MUST update your code)
+=====================================================================
+
+---------------------------------------------------------
+1.1 Login: token and user moved inside "data"
+---------------------------------------------------------
+Applies to BOTH  POST /auth/login  and  POST /users/login  (they are identical).
+
+BEFORE:
+{
+  "access_token": "eyJhbGciOi...",
+  "user": { "id": "cm4user123", "username": "admin", "role": "SUPERADMIN" }
+}
+
+AFTER:
+{
+  "message": "Logged in successfully",
+  "data": {
+    "access_token": "eyJhbGciOi...",
+    "user": { "id": "cm4user123", "username": "admin", "role": "SUPERADMIN" }
+  }
+}
+
+Read:  response.data.access_token   and   response.data.user.role
+(not response.access_token / response.user anymore)
+
+
+---------------------------------------------------------
+1.2 EVERY success response is now { message, data }
+---------------------------------------------------------
+All modules, all endpoints:
+
+    { "message": string, "data": <object | array | null> }
+
+    create / update / get one -> data = the record
+    get all                   -> data = array ([] when empty)
+    delete                    -> data = null
+
+Here is every place that was different before:
+
+PRODUCTS (/products)
+  BEFORE create/update/get one:  { "message": "...", "product": { ... } }
+  BEFORE get all:                { "message": "...", "products": [ ... ] }
+  BEFORE delete:                 { "message": "Product deleted successfully" }
+  AFTER  create/update/get one:  { "message": "...", "data": { ... } }
+  AFTER  get all:                { "message": "...", "data": [ ... ] }
+  AFTER  delete:                 { "message": "Product deleted successfully", "data": null }
+  -> replace  res.product / res.products  with  res.data
+
+PRODUCT INVENTORY (/prodcut-inventory)
+  BEFORE create/update:  { "message": "...", "productInventory": { ... } }
+  BEFORE delete:         { "message": "Product inventory deleted successfully" }
+  AFTER  create/update:  { "message": "...", "data": { ... } }
+  AFTER  delete:         { "message": "Product inventory deleted successfully", "data": null }
+  (get one / get all already used "data" - unchanged)
+  -> replace  res.productInventory  with  res.data
+
+CUSTOMER (/customer)  and  SUPPLIER (/supplier)  - biggest change
+  BEFORE create/update:  { "message": "customer created successfully", "customer": { ... } }
+                         { "message": "supplier created successfully", "supplier": { ... } }
+  BEFORE get all:        [ { ... }, { ... } ]          <-- a plain array, no wrapper
+  BEFORE get one:        { "id": "...", "name": "..." } <-- the bare object, no wrapper
+  BEFORE delete:         { "message": "customer deleted successfully" }
+
+  AFTER  create/update:  { "message": "customer created successfully", "data": { ... } }
+  AFTER  get all:        { "message": "Customers returned successfully", "data": [ ... ] }
+  AFTER  get one:        { "message": "Customer returned successfully", "data": { ... } }
+  AFTER  delete:         { "message": "customer deleted successfully", "data": null }
+  (same for supplier: "Suppliers returned successfully", "Supplier returned successfully")
+  -> replace  res.customer / res.supplier / res (array) / res (object)  with  res.data
+
+USERS (/users)
+  BEFORE create:  { "message": "user created successfully" }         <-- no user returned
+  AFTER  create:  { "message": "user created successfully", "data": { ...new user, no password } }
+  BEFORE delete:  { "message": "User deleted successfully" }
+  AFTER  delete:  { "message": "User deleted successfully", "data": null }
+  (You no longer need to call GET /users after create to find the new id.)
+
+BRANCH, INVENTORY, EMPLOYEES - only delete changed
+  BEFORE delete:  { "message": "Branch deleted successfully" }
+  AFTER  delete:  { "message": "Branch deleted successfully", "data": null }
+
+CATEGORIES (/categories) - delete changed
+  BEFORE delete:  { "data": null, "message": "Category with id cm4... removed successfully" }
+  AFTER  delete:  { "message": "Category deleted successfully", "data": null }
+
+ITEM UNITS (/item-unit) - delete changed
+  BEFORE delete:  { "data": { ...the deleted unit }, "message": "ItemUnit deleted successfully" }
+  AFTER  delete:  { "message": "ItemUnit deleted successfully", "data": null }
+
+ROOT (GET /)
+  BEFORE: "Hello World!"   (plain text)
+  AFTER:  { "message": "API is running", "data": null }   (needs a SUPERADMIN token)
+
+Tip: you can now write ONE helper, e.g.  const data = res.data;  for every call.
+Error responses did NOT change shape (see 00-overview.txt).
+
+
+---------------------------------------------------------
+1.3 Only SUPERADMIN can use the API (403 for everyone else)
+---------------------------------------------------------
+Every endpoint now requires a SUPERADMIN, EXCEPT:
+    POST /auth/signup, POST /auth/login, POST /users/login   (public)
+
+A logged-in user with any other role (ADMIN, ACCOUNTENT, SALES, USER) gets on
+EVERY endpoint:
+
+BEFORE: 200 (any logged-in user could call everything)
+AFTER:
+{
+  "message": "You do not have the required roles to access this resource",
+  "error": "Forbidden",
+  "statusCode": 403
+}
+
+Roles will be opened per endpoint later; the docs will say when.
+Use data.user.role from the login response to know who is logged in.
+
+
+---------------------------------------------------------
+1.4 Unknown fields are rejected (400)
+---------------------------------------------------------
+Send ONLY the fields documented for each endpoint. Any other field fails the
+whole request.
+
+BEFORE: extra fields were silently accepted (or caused a 500).
+AFTER:
+POST /branch  { "name": "Cairo", "id": "x", "createdAt": "2026-01-01" }
+->
+{
+  "message": ["property id should not exist", "property createdAt should not exist"],
+  "error": "Bad Request",
+  "statusCode": 400
+}
+
+NEVER send these in a body (common mistake when you re-send an object you got
+from the API, e.g. on an edit form):
+    id, createdAt, updatedAt, deletedAt, lastLoginDate,
+    nested objects like category, primaryIteamUnit, product, inventory,
+    productInventories
+Also don't send branchId in the body of POST /inventory/branch/:branchId or
+POST /employees/branch/:branchId (it goes in the URL).
+"code" is still ALLOWED (it doesn't cause 400) but it is IGNORED - see 1.5.
+
+Fix: build the request body from your form fields, don't send the whole object.
+
+
+---------------------------------------------------------
+1.5 "code" is ignored on create AND on PATCH
+---------------------------------------------------------
+Codes (branch-123456, category-123456, unit-123456, PRD-123456, CUS-123456,
+SUP-123456, EMP-123456) are always made by the server.
+
+BEFORE: on PATCH you could change a code:  PATCH /customer/:id { "code": "MY-CODE" } -> code changed
+AFTER:  the code is ignored:               PATCH /customer/:id { "code": "MY-CODE" } -> code unchanged
+
+Make the code field READ-ONLY in your forms (show it, don't edit it).
+
+
+---------------------------------------------------------
+1.6 Categories and item units are soft-deleted now
+---------------------------------------------------------
+BEFORE: DELETE removed the row for real.
+AFTER:  DELETE hides it (it stays in the database):
+  - it disappears from GET /categories and GET /item-unit
+  - GET /categories/:id (or /item-unit/:id) returns 404
+  - it can't be used on a product anymore:
+      POST/PATCH /products with that categoryId ->
+      { "statusCode": 400, "message": "categoryId does not exist", "error": "Bad Request" }
+      (same with "primaryIteamUnitId does not exist")
+  - delete is still blocked (400) while an ACTIVE product uses it; deleted
+    products don't count anymore.
+Category and item-unit objects now also have createdAt, updatedAt, deletedAt.
+
+
+---------------------------------------------------------
+1.7 Duplicate national ID: 400 -> 409
+---------------------------------------------------------
+POST / PATCH employees with a national ID another active employee has:
+
+BEFORE:
+{ "statusCode": 400, "message": "Employee with national ID 1234567890 already exists", "error": "Bad Request" }
+AFTER:
+{ "statusCode": 409, "message": "nationalId already exists", "error": "Conflict" }
+
+
+=====================================================================
+PART 2 - NEW: POST /auth/signup  (TEMPORARY)
+=====================================================================
+Public (no token). ALWAYS creates a SUPERADMIN, even if you send another role.
+It WILL BE REMOVED before production - don't build a real signup screen on it.
+
+Body:
+{
+  "username": "drba7r",            required, unique
+  "password": "drba7r12345",       required, min 6 characters
+  "email": "drba7r@example.com",   optional, unique
+  "employeeId": "cm4employee789",  optional
+  "branchId": "cm4branch123",      optional
+  "role": "USER"                   optional, IGNORED (always SUPERADMIN)
+}
+
+Response (201):
+{
+  "message": "User signed up successfully",
+  "data": {
+    "id": "cmwpqmbpt000e2fleknaahyq0",
+    "username": "drba7r",
+    "email": "drba7r@example.com",
+    "role": "SUPERADMIN",
+    "employeeId": null,
+    "branchId": null,
+    "lastLoginDate": null,
+    "createdAt": "2026-11-21T01:36:50.897Z",
+    "updatedAt": "2026-11-21T01:36:50.897Z"
+  }
+}
+Signup does NOT log you in: call POST /auth/login after it.
+
+Errors:
+  400 validation / unknown field
+  409 { "message": "username already exists" }   (or email / employeeId)
+  409 { "message": "username belongs to a deleted user" }   (or email / employeeId)
+  400 { "message": "branchId does not exist" }   (or employeeId)
+
+
+=====================================================================
+PART 3 - NEW BEHAVIOR (not breaking, but handle it)
+=====================================================================
+
+---------------------------------------------------------
+3.1 Re-adding a deleted product to a warehouse RESTORES it
+---------------------------------------------------------
+POST /prodcut-inventory/inventory/:inventoryId  { productId, quantity, costPrice }
+
+BEFORE: if this product was in this warehouse before and was deleted -> 409 error.
+AFTER:  the old record comes back (same id) with the NEW quantity and costPrice.
+        Status 201, like a normal create - only the message is different:
+{
+  "message": "Product inventory restored successfully",
+  "data": {
+    "id": "cm4prodinv123",
+    "productId": "cm4product123",
+    "inventoryId": "cm4inventory789",
+    "quantity": "42",
+    "costPrice": "7.25",
+    "deletedAt": null
+  }
+}
+A normal new record still says "Product inventory created successfully".
+If the product is ACTIVE in that warehouse already -> 400 "Product inventory
+already exists" (use PATCH to change it).
+
+---------------------------------------------------------
+3.2 Values that belong to a DELETED record -> clear 409 message
+---------------------------------------------------------
+Some values stay reserved after delete. Using one again gives 409 with a
+message that tells you why (the deleted record is NOT restored):
+
+  employees  nationalId  -> "nationalId belongs to a deleted employee"
+  users      username    -> "username belongs to a deleted user"
+  users      email       -> "email belongs to a deleted user"
+  users      employeeId  -> "employeeId belongs to a deleted user"
+  products   barcode     -> "barcode belongs to a deleted product"
+  (also on POST /auth/signup for username / email / employeeId)
+
+Example:
+{ "statusCode": 409, "message": "barcode belongs to a deleted product", "error": "Conflict" }
+
+If an ACTIVE record has the value, the message stays "<field> already exists".
+Show the message to the user as-is next to the field.
+
+
+=====================================================================
+PART 4 - OTHER CHANGES
+=====================================================================
+- Lists are newest first now: categories, item units, customers, suppliers
+  (branches, inventories, employees, products already were).
+- Employee hireDate accepts a plain date: "2025-01-01" now works
+  (before it failed). "2025-01-01T00:00:00.000Z" still works.
+- GET /products/:id no longer shows deleted stock records in
+  productInventories.
+- Numbers are still RETURNED AS STRINGS (prices, quantity, costPrice,
+  creditLimit, openingBalance), e.g. "12.5". Use Number(value) before math.
+  They keep up to 4 decimals: 12.34567 is saved as "12.3457".
+- POST /users no longer sets lastLoginDate: it is null until the first login.
+- Every delete in every module is a soft delete now.
+
+
+=====================================================================
+PART 5 - CHECKLIST
+=====================================================================
+[ ] Login: read data.access_token and data.user (role) - both /auth/login
+    and /users/login.
+[ ] Store the token and send  Authorization: Bearer <token>  on EVERY request
+    (everything except signup/login).
+[ ] Update EVERY place that reads response keys:
+      product / products / productInventory / customer / supplier -> data
+      customer & supplier lists and get-one -> data (they were not wrapped)
+      users create -> data now has the new user
+[ ] Handle errors globally:
+      401 -> clear the session, go to the login screen
+      403 -> "Permission denied" (non-SUPERADMIN users)
+      409 -> show message next to the field ("... already exists" /
+             "... belongs to a deleted ...")
+      400 -> "message" is an ARRAY for validation errors, a STRING otherwise
+[ ] Remove extra fields from request bodies (id, createdAt, updatedAt,
+    deletedAt, nested objects...). Send only what the docs list.
+[ ] Make "code" read-only in all forms.
+[ ] Employees: duplicate nationalId is now 409 (was 400).
+[ ] Product inventory: "Product inventory restored successfully" is a success
+    (201) - treat it like "created".
+[ ] Convert number strings with Number(...) before calculating.

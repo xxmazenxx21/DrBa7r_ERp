@@ -26,8 +26,8 @@ model ProductInventory {
   inventoryId String
   product     Product   @relation(fields: [productId], references: [id])
   inventory   Inventory @relation(fields: [inventoryId], references: [id])
-  quantity    Decimal
-  costPrice   Decimal
+  quantity    Decimal   @default(0) @db.Decimal(18, 4)
+  costPrice   Decimal   @default(0) @db.Decimal(18, 4)
   deletedAt   DateTime?
 
   @@unique([productId, inventoryId])

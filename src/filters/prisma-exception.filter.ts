@@ -15,6 +15,15 @@ import { Prisma } from '../../generated/prisma/client.js';
  *   P2025 record not found      -> 404 Not Found
  * Anything else is logged and returned as 500.
  */
+/** The parts of `PrismaClientKnownRequestError.meta` we read. */
+interface PrismaErrorMeta {
+  target?: string[] | string;
+  field_name?: string;
+  driverAdapterError?: {
+    cause?: { constraint?: { fields?: string[]; index?: string } };
+  };
+}
+
 @Catch(Prisma.PrismaClientKnownRequestError)
 export class PrismaExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(PrismaExceptionFilter.name);
@@ -60,16 +69,20 @@ export class PrismaExceptionFilter implements ExceptionFilter {
 
   /** Extracts the column name(s) from the different shapes Prisma uses. */
   private getFields(e: Prisma.PrismaClientKnownRequestError): string[] {
-    const meta = (e.meta ?? {}) as any;
+    const meta = (e.meta ?? {}) as PrismaErrorMeta;
 
     if (Array.isArray(meta.target)) return meta.target;
-    if (typeof meta.target === 'string') return [this.fromConstraint(meta.target)];
-    if (typeof meta.field_name === 'string') return [this.fromConstraint(meta.field_name)];
+    if (typeof meta.target === 'string') {
+      return [this.fromConstraint(meta.target)];
+    }
+    if (typeof meta.field_name === 'string') {
+      return [this.fromConstraint(meta.field_name)];
+    }
 
     // Driver adapters (e.g. @prisma/adapter-pg) put details here instead.
     const constraint = meta.driverAdapterError?.cause?.constraint;
     if (constraint?.fields?.length) {
-      return constraint.fields.map((f: string) => f.replace(/"/g, ''));
+      return constraint.fields.map((f) => f.replace(/"/g, ''));
     }
     if (typeof constraint?.index === 'string') {
       return [this.fromConstraint(constraint.index)];

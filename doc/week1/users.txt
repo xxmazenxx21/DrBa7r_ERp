@@ -6,11 +6,17 @@ Base URL
 Production:      https://drba7rerp-production.up.railway.app
 Local (Docker):  http://localhost:3000
 
-Authentication
---------------
-All endpoints require:  Authorization: Bearer <access_token>
-EXCEPT POST /users/login, which is public.
-Get the token from POST /auth/login or POST /users/login (see auth.txt).
+Authentication & access
+-----------------------
+All endpoints require:  Authorization: Bearer <access_token>   (see auth.txt)
+Only SUPERADMIN can call them:
+  - no / invalid token  -> 401 { "message": "Unauthorized", "statusCode": 401 }
+  - other roles         -> 403 { "message": "You do not have the required roles to access this resource", "error": "Forbidden", "statusCode": 403 }
+
+Response shape: every success is { "message": "...", "data": ... }
+Unknown fields in a body -> 400 "property <name> should not exist"
+Delete is a SOFT delete (record hidden, kept in the database).
+EXCEPTION: POST /users/login is public (no token, any role).
 
 Overview
 --------
@@ -21,6 +27,20 @@ The password is NEVER returned by any endpoint.
 Role values (field "role")
 --------------------------
     SUPERADMIN | ADMIN | ACCOUNTENT | SALES | USER
+
+User object (what "data" contains)
+----------------------------------
+{
+  "id": "cm4user123",
+  "username": "ahmed.sales",
+  "email": "ahmed@example.com",
+  "role": "SALES",
+  "employeeId": "cm4employee789",
+  "branchId": "cm4branch123",
+  "lastLoginDate": null,          <-- null until the user logs in for the first time
+  "createdAt": "2026-08-21T18:25:33.000Z",
+  "updatedAt": "2026-08-21T18:25:33.000Z"
+}
 
 
 ---------------------------------------------------------
@@ -49,17 +69,18 @@ Request Example:
 
 Success Response (201):
 {
-  "message": "user created successfully"
+  "message": "user created successfully",
+  "data": { ...user object (see above), lastLoginDate: null }
 }
 
-IMPORTANT: the new user's id is NOT returned. If you need it, call GET /users
-and find the user by username.
-
 Error Cases:
-- Missing/invalid fields                      -> 400 (validation error)
-- Duplicate username / email / employeeId     -> 409
+- Missing/invalid/unknown fields              -> 400 (validation error)
+- Duplicate username / email / employeeId of an ACTIVE user -> 409
     { "statusCode": 409, "message": "username already exists", "error": "Conflict" }
     (message is "email already exists" / "employeeId already exists" accordingly)
+- username / email / employeeId of a DELETED user -> 409 (the user is NOT restored)
+    { "statusCode": 409, "message": "username belongs to a deleted user", "error": "Conflict" }
+    (or "email belongs to a deleted user" / "employeeId belongs to a deleted user")
 - employeeId or branchId that does not exist  -> 400
     { "statusCode": 400, "message": "branchId does not exist", "error": "Bad Request" }
 
@@ -73,20 +94,8 @@ Description: All active (not deleted) users.
 
 Success Response (200):
 {
-  "data": [
-    {
-      "id": "cm4user123",
-      "username": "admin",
-      "email": null,
-      "role": "SUPERADMIN",
-      "employeeId": null,
-      "branchId": null,
-      "lastLoginDate": "2026-08-21T18:30:00.000Z",
-      "createdAt": "2026-08-21T18:25:33.000Z",
-      "updatedAt": "2026-08-21T18:30:00.000Z"
-    }
-  ],
-  "message": "Users retrieved successfully"
+  "message": "Users retrieved successfully",
+  "data": [ { ...user object }, { ...user object } ]
 }
 
 
@@ -96,23 +105,10 @@ Success Response (200):
 Method: GET
 URL: /users/:id
 
-Example Request:
-GET /users/cm4user123
-
 Success Response (200):
 {
-  "data": {
-    "id": "cm4user123",
-    "username": "admin",
-    "email": null,
-    "role": "SUPERADMIN",
-    "employeeId": null,
-    "branchId": null,
-    "lastLoginDate": "2026-08-21T18:30:00.000Z",
-    "createdAt": "2026-08-21T18:25:33.000Z",
-    "updatedAt": "2026-08-21T18:30:00.000Z"
-  },
-  "message": "User retrieved successfully"
+  "message": "User retrieved successfully",
+  "data": { ...user object }
 }
 
 Error Response (404 - not found or deleted):
@@ -145,24 +141,14 @@ Request Example (change password):
 
 Success Response (200):
 {
-  "data": {
-    "id": "cm4user123",
-    "username": "ahmed.sales",
-    "email": "newmail@example.com",
-    "role": "ADMIN",
-    "employeeId": null,
-    "branchId": null,
-    "lastLoginDate": "2026-08-21T18:30:00.000Z",
-    "createdAt": "2026-08-21T18:25:33.000Z",
-    "updatedAt": "2026-08-21T18:40:00.000Z"
-  },
-  "message": "User updated successfully"
+  "message": "User updated successfully",
+  "data": { ...updated user object }
 }
 
 Error Cases:
-- User not found / deleted        -> 404
-- Invalid role / bad email / password shorter than 6 -> 400
-- Duplicate username / email / employeeId            -> 409 (same body as Create)
+- User not found / deleted                            -> 404 (same body as Get User By ID)
+- Invalid role / bad email / password shorter than 6  -> 400
+- username / email / employeeId used by an active or a deleted user -> 409 (same bodies as Create)
 - employeeId or branchId that does not exist          -> 400 (same body as Create)
 
 
@@ -175,15 +161,11 @@ Description: Soft delete. The user disappears from lists and can no longer log i
 
 Success Response (200):
 {
-  "message": "User deleted successfully"
+  "message": "User deleted successfully",
+  "data": null
 }
 
-Error Response (404 - not found or already deleted):
-{
-  "statusCode": 404,
-  "message": "User with id cm4user123 not found",
-  "error": "Not Found"
-}
+Error Response (404 - not found or already deleted): same as Get User By ID.
 
 
 ---------------------------------------------------------
@@ -193,7 +175,7 @@ Method: POST
 URL: /users/login
 Access: Public (no token needed)
 Description: Exactly the same as POST /auth/login - same body, same response,
-same errors. Use either one.
+same errors (see auth.txt).
 
 Request Example:
 {
@@ -203,11 +185,14 @@ Request Example:
 
 Success Response (201):
 {
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "user": {
-    "id": "cm4user123",
-    "username": "admin",
-    "role": "SUPERADMIN"
+  "message": "Logged in successfully",
+  "data": {
+    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "user": {
+      "id": "cm4user123",
+      "username": "admin",
+      "role": "SUPERADMIN"
+    }
   }
 }
 

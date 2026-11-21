@@ -6,10 +6,11 @@ import {
 import { CreateProdcutInventoryDto } from './dto/create-prodcut-inventory.dto';
 import { UpdateProdcutInventoryDto } from './dto/update-prodcut-inventory.dto';
 import { PrismaService } from '../prisma/prisma.service';
+import { ok } from '../utils/response/response';
 
 @Injectable()
 export class ProdcutInventoryService {
-  constructor(private prisma: PrismaService) { }
+  constructor(private prisma: PrismaService) {}
 
   async create(
     inventoryId: string,
@@ -29,15 +30,30 @@ export class ProdcutInventoryService {
     });
     if (!product) throw new NotFoundException('Product not found');
 
-    const productInventoryExist = await this.prisma.productInventory.findFirst({
+    // One row per product + warehouse (@@unique), deleted rows included.
+    const existing = await this.prisma.productInventory.findUnique({
       where: {
-        inventoryId,
-        productId: createProdcutInventoryDto.productId,
-        deletedAt: null,
+        productId_inventoryId: {
+          productId: createProdcutInventoryDto.productId,
+          inventoryId,
+        },
       },
     });
-    if (productInventoryExist)
+    if (existing && existing.deletedAt === null) {
       throw new BadRequestException('Product inventory already exists');
+    }
+    if (existing) {
+      // Soft-deleted before: bring the same row back with the new values.
+      const restored = await this.prisma.productInventory.update({
+        where: { id: existing.id },
+        data: {
+          deletedAt: null,
+          quantity: createProdcutInventoryDto.quantity,
+          costPrice: createProdcutInventoryDto.costPrice,
+        },
+      });
+      return ok('Product inventory restored successfully', restored);
+    }
 
     const productInventory = await this.prisma.productInventory.create({
       data: {
@@ -48,10 +64,7 @@ export class ProdcutInventoryService {
       },
     });
 
-    return {
-      message: 'Product inventory created successfully',
-      productInventory,
-    };
+    return ok('Product inventory created successfully', productInventory);
   }
 
   async findAllByInventoryId(inventoryId: string) {
@@ -81,10 +94,7 @@ export class ProdcutInventoryService {
       },
     });
 
-    return {
-      message: 'Products in inventory fetched successfully',
-      data: productInventories,
-    };
+    return ok('Products in inventory fetched successfully', productInventories);
   }
 
   async findOne(id: string) {
@@ -108,10 +118,7 @@ export class ProdcutInventoryService {
       throw new NotFoundException(`Product inventory with ID ${id} not found`);
     }
 
-    return {
-      message: 'Product inventory item fetched successfully',
-      data: productInventory,
-    };
+    return ok('Product inventory item fetched successfully', productInventory);
   }
 
   async update(
@@ -141,10 +148,10 @@ export class ProdcutInventoryService {
       },
     });
 
-    return {
-      message: 'Product inventory updated successfully',
-      productInventory: updatedProductInventory,
-    };
+    return ok(
+      'Product inventory updated successfully',
+      updatedProductInventory,
+    );
   }
 
   async remove(id: string) {
@@ -164,8 +171,6 @@ export class ProdcutInventoryService {
       data: { deletedAt: new Date() },
     });
 
-    return {
-      message: 'Product inventory deleted successfully',
-    };
+    return ok('Product inventory deleted successfully', null);
   }
 }

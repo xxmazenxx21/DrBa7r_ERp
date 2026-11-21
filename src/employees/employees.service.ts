@@ -1,133 +1,88 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { generateCode } from '../utils/codeGenratror/code.generator';
+import { ok } from '../utils/response/response';
+import { assertNotUsedByDeleted } from '../utils/unique/deleted-unique';
 
 @Injectable()
 export class EmployeesService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
-  async create(branchId: string, createEmployeeDto: CreateEmployeeDto) {
+  private async assertBranch(branchId: string) {
     const branch = await this.prisma.branch.findFirst({
       where: { id: branchId, deletedAt: null },
     });
-
     if (!branch) {
       throw new NotFoundException(`Branch with id ${branchId} not found`);
     }
+  }
 
-    if (createEmployeeDto.nationalId) {
-      const existingNationalId = await this.prisma.employee.findFirst({
-        where: { nationalId: createEmployeeDto.nationalId, deletedAt: null },
-      });
-      if (existingNationalId) {
-        throw new BadRequestException(`Employee with national ID ${createEmployeeDto.nationalId} already exists`);
-      }
-    }
+  async create(branchId: string, dto: CreateEmployeeDto) {
+    await this.assertBranch(branchId);
+    // Active duplicate -> PrismaExceptionFilter 409 "nationalId already exists".
+    await assertNotUsedByDeleted(this.prisma.employee, 'employee', {
+      nationalId: dto.nationalId,
+    });
 
     const employee = await this.prisma.employee.create({
       data: {
-        ...createEmployeeDto,
         code: generateCode('EMP'),
+        fullName: dto.fullName,
+        nationalId: dto.nationalId,
+        jobTitle: dto.jobTitle,
+        hireDate: dto.hireDate ? new Date(dto.hireDate) : undefined,
         branchId,
       },
     });
-
-    return { data: employee, message: 'Employee created successfully' };
+    return ok('Employee created successfully', employee);
   }
 
   async findAllByBranch(branchId: string) {
-    const branch = await this.prisma.branch.findFirst({
-      where: { id: branchId, deletedAt: null },
-    });
-
-    if (!branch) {
-      throw new NotFoundException(`Branch with id ${branchId} not found`);
-    }
-
+    await this.assertBranch(branchId);
     const employees = await this.prisma.employee.findMany({
       where: { branchId, deletedAt: null },
       orderBy: { createdAt: 'desc' },
     });
-
-    return { data: employees, message: 'Employees returned successfully' };
+    return ok('Employees returned successfully', employees);
   }
 
   async findOne(id: string) {
     const employee = await this.prisma.employee.findFirst({
       where: { id, deletedAt: null },
     });
-
     if (!employee) {
       throw new NotFoundException(`Employee with id ${id} not found`);
     }
-
-    return { data: employee, message: 'Employee returned successfully' };
+    return ok('Employee returned successfully', employee);
   }
 
-  async update(id: string, updateEmployeeDto: UpdateEmployeeDto) {
-    const employee = await this.prisma.employee.findFirst({
-      where: { id, deletedAt: null },
+  async update(id: string, dto: UpdateEmployeeDto) {
+    await this.findOne(id);
+    // Active duplicate -> PrismaExceptionFilter 409 "nationalId already exists".
+    await assertNotUsedByDeleted(this.prisma.employee, 'employee', {
+      nationalId: dto.nationalId,
     });
 
-    if (!employee) {
-      throw new NotFoundException(`Employee with id ${id} not found`);
-    }
-
-    if (updateEmployeeDto.code && updateEmployeeDto.code !== employee.code) {
-      const existingCode = await this.prisma.employee.findFirst({
-        where: {
-          code: updateEmployeeDto.code,
-          id: { not: id },
-          deletedAt: null,
-        },
-      });
-
-      if (existingCode) {
-        throw new BadRequestException(`Employee with code ${updateEmployeeDto.code} already exists`);
-      }
-    }
-
-    if (updateEmployeeDto.nationalId && updateEmployeeDto.nationalId !== employee.nationalId) {
-      const existingNationalId = await this.prisma.employee.findFirst({
-        where: {
-          nationalId: updateEmployeeDto.nationalId,
-          id: { not: id },
-          deletedAt: null,
-        },
-      });
-
-      if (existingNationalId) {
-        throw new BadRequestException(`Employee with national ID ${updateEmployeeDto.nationalId} already exists`);
-      }
-    }
-
-    const updatedEmployee = await this.prisma.employee.update({
+    const employee = await this.prisma.employee.update({
       where: { id },
-      data: updateEmployeeDto,
+      data: {
+        fullName: dto.fullName,
+        nationalId: dto.nationalId,
+        jobTitle: dto.jobTitle,
+        hireDate: dto.hireDate ? new Date(dto.hireDate) : undefined,
+      },
     });
-
-    return {
-      data: updatedEmployee,
-      message: 'Employee updated successfully',
-    };
+    return ok('Employee updated successfully', employee);
   }
 
   async remove(id: string) {
-    const employee = await this.prisma.employee.findFirst({
-      where: { id, deletedAt: null },
-    });
-
-    if (!employee) {
-      throw new NotFoundException(`Employee with id ${id} not found`);
-    }
-
+    await this.findOne(id);
     await this.prisma.employee.update({
       where: { id },
       data: { deletedAt: new Date() },
     });
-
-    return { message: 'Employee deleted successfully' };
+    return ok('Employee deleted successfully', null);
   }
 }

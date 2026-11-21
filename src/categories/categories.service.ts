@@ -7,64 +7,60 @@ import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { generateCode } from '../utils/codeGenratror/code.generator';
+import { ok } from '../utils/response/response';
 
 @Injectable()
 export class CategoriesService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   async create(createCategoryDto: CreateCategoryDto) {
-    createCategoryDto.code = generateCode('category');
     const category = await this.prisma.categories.create({
-      data: createCategoryDto,
+      data: { name: createCategoryDto.name, code: generateCode('category') },
     });
-    return { data: category, message: 'Category created successfully' };
+    return ok('Category created successfully', category);
   }
 
   async findAll() {
-    const categories = await this.prisma.categories.findMany();
-    return {
-      data: categories,
-      message: 'All categories returned successfully',
-    };
+    const categories = await this.prisma.categories.findMany({
+      where: { deletedAt: null },
+      orderBy: { createdAt: 'desc' },
+    });
+    return ok('All categories returned successfully', categories);
   }
 
   async findOne(id: string) {
-    const category = await this.prisma.categories.findUnique({ where: { id } });
+    const category = await this.prisma.categories.findFirst({
+      where: { id, deletedAt: null },
+    });
     if (!category) {
       throw new NotFoundException(`Category with id ${id} not found`);
     }
-    return { data: category, message: 'Category returned successfully' };
+    return ok('Category returned successfully', category);
   }
 
   async update(id: string, updateCategoryDto: UpdateCategoryDto) {
-    const category = await this.prisma.categories.findUnique({ where: { id } });
-    if (!category) {
-      throw new NotFoundException(`Category with id ${id} not found`);
-    }
-    const updated = await this.prisma.categories.update({
+    await this.findOne(id);
+    const category = await this.prisma.categories.update({
       where: { id },
-      data: updateCategoryDto,
+      data: { name: updateCategoryDto.name },
     });
-    return { data: updated, message: 'Category updated successfully' };
+    return ok('Category updated successfully', category);
   }
 
   async remove(id: string) {
-    const category = await this.prisma.categories.findUnique({ where: { id } });
-    if (!category) {
-      throw new NotFoundException(`Category with id ${id} not found`);
-    }
+    await this.findOne(id);
     const productsCount = await this.prisma.product.count({
-      where: { categoryId: id },
+      where: { categoryId: id, deletedAt: null },
     });
     if (productsCount > 0) {
       throw new BadRequestException(
         `Category is used by ${productsCount} product(s) and cannot be deleted`,
       );
     }
-    await this.prisma.categories.delete({ where: { id } });
-    return {
-      data: null,
-      message: `Category with id ${id} removed successfully`,
-    };
+    await this.prisma.categories.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
+    return ok('Category deleted successfully', null);
   }
 }

@@ -9,10 +9,10 @@ Local (Docker):  http://localhost:3000
 Overview
 --------
 The backend is secured globally with JWT. Every endpoint requires a valid
-Bearer token, EXCEPT POST /auth/login (POST /users/login is the same endpoint
-and also public - use either one).
-There is NO public signup. New users are created by a logged-in user via
-POST /users (see users.txt).
+Bearer token AND the SUPERADMIN role, EXCEPT:
+    POST /auth/signup   (public, TEMPORARY)
+    POST /auth/login    (public)
+    POST /users/login   (public, identical to /auth/login)
 
 First account on a fresh (Docker) database:
     username: admin
@@ -21,7 +21,8 @@ First account on a fresh (Docker) database:
 
 How to Authenticate
 -------------------
-Log in, take "access_token" from the response, and send it on every request:
+Log in, take "data.access_token" from the response, and send it on every
+request:
 
     Authorization: Bearer <access_token>
 
@@ -30,12 +31,81 @@ Log in, take "access_token" from the response, and send it on every request:
 AUTH APIs
 ---------------------------------------------------------
 
-1) Login
+1) Signup  ** TEMPORARY - will be removed before production **
    Method: POST
-   URL: /auth/login
+   URL: /auth/signup
+   Access: Public (no token needed)
+   Description: Creates a new account. The account is ALWAYS a SUPERADMIN,
+                whatever role you send. The password is stored hashed and is
+                never returned.
+
+   Validation Rules:
+   - username: required string (must be unique)
+   - password: required string, minimum 6 characters
+   - email: optional, valid email (must be unique)
+   - employeeId: optional string (id of an existing employee)
+   - branchId: optional string (id of an existing branch)
+   - role: optional, one of SUPERADMIN | ADMIN | ACCOUNTENT | SALES | USER
+           (accepted but IGNORED - the user is always SUPERADMIN)
+
+   Request Example:
+   {
+     "username": "drba7r",
+     "password": "drba7r12345",
+     "email": "drba7r@example.com"
+   }
+
+   Response Example (201 Created):
+   {
+     "message": "User signed up successfully",
+     "data": {
+       "id": "cmwpqmbpt000e2fleknaahyq0",
+       "username": "drba7r",
+       "email": "drba7r@example.com",
+       "role": "SUPERADMIN",
+       "employeeId": null,
+       "branchId": null,
+       "lastLoginDate": null,
+       "createdAt": "2026-11-21T01:36:50.897Z",
+       "updatedAt": "2026-11-21T01:36:50.897Z"
+     }
+   }
+
+   Error Response (409 - username or email already used by an ACTIVE user):
+   {
+     "statusCode": 409,
+     "message": "username already exists",
+     "error": "Conflict"
+   }
+   (or "email already exists" / "employeeId already exists")
+
+   Error Response (409 - username / email / employeeId belongs to a DELETED user):
+   {
+     "statusCode": 409,
+     "message": "username belongs to a deleted user",
+     "error": "Conflict"
+   }
+
+   Error Response (400 - employeeId / branchId does not exist):
+   {
+     "statusCode": 400,
+     "message": "branchId does not exist",
+     "error": "Bad Request"
+   }
+
+   Error Response (400 - validation / unknown field):
+   {
+     "message": ["password must be longer than or equal to 6 characters"],
+     "error": "Bad Request",
+     "statusCode": 400
+   }
+
+2) Login
+   Method: POST
+   URL: /auth/login        (POST /users/login is identical)
    Access: Public (no token needed)
    Description: Checks username/password, updates the user's lastLoginDate,
-                and returns a JWT access token.
+                and returns a JWT plus the user's id, username and role.
 
    Validation Rules:
    - username: required string
@@ -49,13 +119,19 @@ AUTH APIs
 
    Response Example (201 Created):
    {
-     "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-     "user": {
-       "id": "cmwnwbnsj00002fmx5qtqdm7q",
-       "username": "admin",
-       "role": "SUPERADMIN"
+     "message": "Logged in successfully",
+     "data": {
+       "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+       "user": {
+         "id": "92c91eff-edfe-4606-b1a6-d59df502e8a6",
+         "username": "admin",
+         "role": "SUPERADMIN"
+       }
      }
    }
+
+   Use data.user.role to know if the account is SUPERADMIN. Right now only
+   SUPERADMIN can use the rest of the API (every other role gets 403).
 
    Error Response (401 - wrong username/password, or user is deleted):
    {
@@ -77,8 +153,10 @@ Roles
 ---------------------------------------------------------
     SUPERADMIN | ADMIN | ACCOUNTENT | SALES | USER
 
-The role is inside the login response (user.role) and inside the JWT payload
-({ sub, username, role }). Use it in the frontend to show/hide screens.
+The role is in the login response (data.user.role) and inside the JWT payload
+({ sub, username, role }).
+Current rule: EVERY endpoint (except signup/login) requires SUPERADMIN.
+Per-endpoint roles will be opened up later; the docs will say so.
 
 
 ---------------------------------------------------------
@@ -86,7 +164,6 @@ Frontend Integration Guide
 ---------------------------------------------------------
 
 1. Missing / invalid token (401)
-   Any protected route called without a token, or with an invalid one, returns:
    {
      "message": "Unauthorized",
      "statusCode": 401
@@ -94,9 +171,8 @@ Frontend Integration Guide
    Action: intercept 401 in your Axios/Fetch client, clear the session,
    and redirect to the Login screen.
 
-2. Role restrictions (403)
-   No endpoint is role-restricted yet. When some are, a user without the
-   required role will get:
+2. Role not allowed (403)
+   Any logged-in user that is NOT SUPERADMIN gets this on every endpoint:
    {
      "message": "You do not have the required roles to access this resource",
      "error": "Forbidden",

@@ -45,6 +45,5 @@ model PurchaseInvoice {
   modifiedByUser User?     @relation("ModifiedInvoices", fields: [modifiedBy], references: [id])
   modifiedDate   DateTime? @updatedAt
 
-  isDeleted Boolean   @default(false)
   deletedAt DateTime?
 }

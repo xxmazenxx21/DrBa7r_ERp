@@ -1,78 +1,74 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { generateCode } from '../utils/codeGenratror/code.generator';
+import { ok } from '../utils/response/response';
 
 @Injectable()
 export class CustomerService {
-  constructor(private readonly prisma: PrismaService) { }
-  async create(createCustomerDto: CreateCustomerDto) {
-    const newcustomer = await this.prisma.customer.create({
-      data: { ...createCustomerDto, code: generateCode('CUS') },
-    });
-    return {
-      message: "customer created successfully",
-      customer: newcustomer
-    }
+  constructor(private readonly prisma: PrismaService) {}
 
+  async create(dto: CreateCustomerDto) {
+    const customer = await this.prisma.customer.create({
+      data: {
+        code: generateCode('CUS'),
+        name: dto.name,
+        taxNumber: dto.taxNumber,
+        commercialRecord: dto.commercialRecord,
+        phone: dto.phone,
+        address: dto.address,
+        creditLimit: dto.creditLimit,
+        openingBalance: dto.openingBalance,
+      },
+    });
+    return ok('customer created successfully', customer);
   }
 
   async findAll() {
     const customers = await this.prisma.customer.findMany({
-      where: { deletedAt: null }
+      where: { deletedAt: null },
+      orderBy: { createdAt: 'desc' },
     });
-
-    return customers;
+    return ok('Customers returned successfully', customers);
   }
 
-  async findOne(id: string) {
+  private async getActive(id: string, notFoundMessage: string) {
     const customer = await this.prisma.customer.findFirst({
-      where: { id: id as any, deletedAt: null }
-    })
-
-    if (!customer) {
-      throw new NotFoundException('customer does not exist');
-    }
-
+      where: { id, deletedAt: null },
+    });
+    if (!customer) throw new NotFoundException(notFoundMessage);
     return customer;
   }
 
-  async update(id: string, updateCustomerDto: UpdateCustomerDto) {
-    // Check if customer exists and is not soft-deleted
-    const customer = await this.prisma.customer.findFirst({
-      where: { id: id as any, deletedAt: null }
-    })
-    if (!customer) throw new NotFoundException("customer not found")
-    if (updateCustomerDto.code && updateCustomerDto.code !== customer.code) {
-      const checkcode = await this.prisma.customer.findFirst({
-        where: { code: updateCustomerDto.code }
-      })
-      if (checkcode) throw new BadRequestException("this code already exists")
-    }
+  async findOne(id: string) {
+    const customer = await this.getActive(id, 'customer does not exist');
+    return ok('Customer returned successfully', customer);
+  }
 
-    const updatedCustomer = await this.prisma.customer.update({
-      where: { id: id as any },
-      data: updateCustomerDto,
+  async update(id: string, dto: UpdateCustomerDto) {
+    await this.getActive(id, 'customer not found');
+    const customer = await this.prisma.customer.update({
+      where: { id },
+      data: {
+        name: dto.name,
+        taxNumber: dto.taxNumber,
+        commercialRecord: dto.commercialRecord,
+        phone: dto.phone,
+        address: dto.address,
+        creditLimit: dto.creditLimit,
+        openingBalance: dto.openingBalance,
+      },
     });
-
-    return {
-      message: 'customer updated successfully',
-      customer: updatedCustomer,
-    };
+    return ok('customer updated successfully', customer);
   }
 
   async remove(id: string) {
-    const customer = await this.prisma.customer.findFirst({
-      where: { id: id as any, deletedAt: null }
-    })
-    if (!customer) throw new NotFoundException("customer not found")
-
+    await this.getActive(id, 'customer not found');
     await this.prisma.customer.update({
-      where: { id: id as any },
+      where: { id },
       data: { deletedAt: new Date() },
     });
-
-    return { message: 'customer deleted successfully' };
+    return ok('customer deleted successfully', null);
   }
 }

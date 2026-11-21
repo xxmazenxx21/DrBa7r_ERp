@@ -1,166 +1,87 @@
-import { Injectable, UnauthorizedException, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { PrismaService } from '../prisma/prisma.service';
-import { JwtService } from '@nestjs/jwt';
-import { comparePassword, hashPassword } from '../utils/hash/hash';
-import { LoginUserDto } from './dto/login.user.dto';
+import { hashPassword } from '../utils/hash/hash';
+import { ok } from '../utils/response/response';
+import { safeUserSelect } from './user.select';
+import { assertNotUsedByDeleted } from '../utils/unique/deleted-unique';
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService,
-    private readonly jwtService: JwtService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   async create(createUserDto: CreateUserDto) {
-
-
-    const password = await hashPassword(createUserDto.password);
-    await this.prisma.user.create({
+    await assertNotUsedByDeleted(this.prisma.user, 'user', {
+      username: createUserDto.username,
+      email: createUserDto.email,
+      employeeId: createUserDto.employeeId,
+    });
+    const user = await this.prisma.user.create({
       data: {
         username: createUserDto.username,
-        password: password,
-        role: createUserDto.role as any,
+        password: await hashPassword(createUserDto.password),
+        role: createUserDto.role,
         email: createUserDto.email,
         employeeId: createUserDto.employeeId,
         branchId: createUserDto.branchId,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        lastLoginDate: new Date(),
-      }
-    })
-    return { message: "user created successfully" };
-  }
-
-
-
-
-
-  async login(loginUserDto: LoginUserDto) {
-    const user = await this.prisma.user.findUnique({
-      where: { username: loginUserDto.username, deletedAt: null }
+        // lastLoginDate stays null until the first login
+      },
+      select: safeUserSelect,
     });
-
-    if (!user) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
-    if (user.deletedAt != null) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
-    const isPasswordValid = await comparePassword(loginUserDto.password, user.password);
-
-    if (!isPasswordValid) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
-
-
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: { lastLoginDate: new Date() }
-    });
-
-    const payload = { sub: user.id, username: user.username, role: user.role };
-
-    return {
-      access_token: await this.jwtService.signAsync(payload),
-      user: {
-        id: user.id,
-        username: user.username,
-        role: user.role
-      }
-    };
+    return ok('user created successfully', user);
   }
-
 
   async findAll() {
     const users = await this.prisma.user.findMany({
       where: { deletedAt: null },
-      select: {
-        id: true,
-        username: true,
-        email: true,
-        role: true,
-        employeeId: true,
-        branchId: true,
-        lastLoginDate: true,
-        createdAt: true,
-        updatedAt: true
-      }
+      select: safeUserSelect,
     });
-    return { data: users, message: "Users retrieved successfully" };
+    return ok('Users retrieved successfully', users);
   }
 
   async findOne(id: string) {
     const user = await this.prisma.user.findFirst({
       where: { id, deletedAt: null },
-      select: {
-        id: true,
-        username: true,
-        email: true,
-        role: true,
-        employeeId: true,
-        branchId: true,
-        lastLoginDate: true,
-        createdAt: true,
-        updatedAt: true
-      }
+      select: safeUserSelect,
     });
-
     if (!user) {
       throw new NotFoundException(`User with id ${id} not found`);
     }
-
-    return { data: user, message: "User retrieved successfully" };
+    return ok('User retrieved successfully', user);
   }
 
   async update(id: string, updateUserDto: UpdateUserDto) {
-    const existingUser = await this.prisma.user.findFirst({
-      where: { id, deletedAt: null }
+    await this.findOne(id);
+    await assertNotUsedByDeleted(this.prisma.user, 'user', {
+      username: updateUserDto.username,
+      email: updateUserDto.email,
+      employeeId: updateUserDto.employeeId,
     });
-    if (!existingUser) {
-      throw new NotFoundException(`User with id ${id} not found`);
-    }
-
-    const updateData: any = { ...updateUserDto };
-
-    if (updateData.password) {
-      updateData.password = await hashPassword(updateData.password);
-    }
-
-    updateData.updatedAt = new Date();
 
     const user = await this.prisma.user.update({
       where: { id },
-      data: updateData,
-      select: {
-        id: true,
-        username: true,
-        email: true,
-        role: true,
-        employeeId: true,
-        branchId: true,
-        lastLoginDate: true,
-        createdAt: true,
-        updatedAt: true
-      }
+      data: {
+        username: updateUserDto.username,
+        password: updateUserDto.password
+          ? await hashPassword(updateUserDto.password)
+          : undefined,
+        role: updateUserDto.role,
+        email: updateUserDto.email,
+        employeeId: updateUserDto.employeeId,
+        branchId: updateUserDto.branchId,
+      },
+      select: safeUserSelect,
     });
-    return { data: user, message: "User updated successfully" };
+    return ok('User updated successfully', user);
   }
 
   async remove(id: string) {
-    const existingUser = await this.prisma.user.findFirst({
-      where: { id, deletedAt: null }
-    });
-    if (!existingUser) {
-      throw new NotFoundException(`User with id ${id} not found`);
-    }
-
+    await this.findOne(id);
     await this.prisma.user.update({
       where: { id },
-      data: {
-
-        deletedAt: new Date()
-      }
+      data: { deletedAt: new Date() },
     });
-    return { message: "User deleted successfully" };
+    return ok('User deleted successfully', null);
   }
 }

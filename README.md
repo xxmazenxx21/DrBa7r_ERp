@@ -48,11 +48,21 @@ docker compose logs -f api # wait for "Nest application successfully started" (C
 
 ### 4. Log in
 
-There is no signup. Use the admin account that is created automatically:
+Use the admin account that is created automatically:
 
 | username | password   | role       |
 |----------|------------|------------|
 | `admin`  | `admin123` | SUPERADMIN |
+
+Or create your own account with the **temporary** signup endpoint. It always creates a SUPERADMIN and will be removed before production:
+
+```bash
+curl -X POST http://localhost:3000/auth/signup \
+  -H "Content-Type: application/json" \
+  -d '{"username":"myname","password":"secret123"}'
+```
+
+Then log in:
 
 ```bash
 curl -X POST http://localhost:3000/auth/login \
@@ -60,11 +70,13 @@ curl -X POST http://localhost:3000/auth/login \
   -d '{"username":"admin","password":"admin123"}'
 ```
 
-Copy the `access_token` from the response and send it on every other request:
+The response looks like `{ "message": "Logged in successfully", "data": { "access_token": "...", "user": { "id", "username", "role" } } }`. Copy `data.access_token` and send it on every other request:
 
 ```
 Authorization: Bearer <access_token>
 ```
+
+> Right now **every endpoint requires a SUPERADMIN** account. A user with any other role gets `403 Forbidden`.
 
 To create more users, call `POST /users` with that token.
 
@@ -133,11 +145,14 @@ Host: localhost   Port: 5433   User: erp   Password: erp_password   Database: er
 | `Cannot connect to the Docker daemon` | Docker Desktop isn't running. Open it and try again. |
 | API keeps restarting | Run `docker compose logs api` to see the error. |
 | Login returns 401 | Check the username and password. If you changed `ADMIN_*` after the first run, see the note in Configuration. |
+| Every request returns 403 | You are logged in with a role other than SUPERADMIN. Log in as a SUPERADMIN. |
 | Want a completely fresh start | `docker compose down -v`, then `docker compose up -d --build`. |
 
 ---
 
 ## API documentation (for the frontend)
+
+> **Frontend: read [`doc/FRONTEND_WEEK1_READ_FIRST.txt`](doc/FRONTEND_WEEK1_READ_FIRST.txt) first.** It lists every change you must handle, including the breaking ones.
 
 The docs are in [`doc/`](doc/), organized by week, with one `.txt` file per module. Start with
 [`doc/week1/00-overview.txt`](doc/week1/00-overview.txt). It explains the login, the general rules and the errors, and links every module.

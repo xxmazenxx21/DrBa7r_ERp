@@ -24,7 +24,7 @@ import { RolesGuard } from './guards/roles.guard';
     ConfigModule.forRoot({ isGlobal: true }),
     JwtModule.registerAsync({
       imports: [ConfigModule],
-      useFactory: async (configService: ConfigService) => ({
+      useFactory: (configService: ConfigService) => ({
         secret: configService.get<string>('JWT_SECRET') || 'defaultSecret',
         signOptions: { expiresIn: '3650d' },
       }),
@@ -57,4 +57,4 @@ import { RolesGuard } from './guards/roles.guard';
     },
   ],
 })
-export class AppModule { }
+export class AppModule {}

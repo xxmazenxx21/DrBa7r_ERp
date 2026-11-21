@@ -6,13 +6,14 @@ import { Public } from '../decorators/public.decorator';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) { }
+  constructor(private readonly authService: AuthService) {}
 
-  // @Post('/signup')
-  // @Public()
-  // create(@Body() createAuthDto: CreateAuthDto) {
-  //   return this.authService.signup(createAuthDto);
-  // }
+  // TEMPORARY: open signup that creates SUPERADMIN accounts. Remove before production.
+  @Post('/signup')
+  @Public()
+  signup(@Body() createAuthDto: CreateAuthDto) {
+    return this.authService.signup(createAuthDto);
+  }
 
   @Post('/login')
   @Public()

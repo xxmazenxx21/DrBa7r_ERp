@@ -2,19 +2,23 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { CreateInventoryDto } from './dto/create-inventory.dto';
 import { UpdateInventoryDto } from './dto/update-inventory.dto';
 import { PrismaService } from '../prisma/prisma.service';
+import { ok } from '../utils/response/response';
 
 @Injectable()
 export class InventoryService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(branchId: string, createInventoryDto: CreateInventoryDto) {
+  private async assertBranch(branchId: string) {
     const branch = await this.prisma.branch.findFirst({
       where: { id: branchId, deletedAt: null },
     });
     if (!branch) {
       throw new NotFoundException(`Branch with id ${branchId} not found`);
     }
+  }
 
+  async create(branchId: string, createInventoryDto: CreateInventoryDto) {
+    await this.assertBranch(branchId);
     const inventory = await this.prisma.inventory.create({
       data: {
         branchId,
@@ -22,69 +26,46 @@ export class InventoryService {
         address: createInventoryDto.address,
       },
     });
-    return { data: inventory, message: 'Inventory created successfully' };
+    return ok('Inventory created successfully', inventory);
   }
 
   async findAllByBranchId(branchId: string) {
-    const branch = await this.prisma.branch.findFirst({
-      where: { id: branchId, deletedAt: null },
-    });
-
-    if (!branch) {
-      throw new NotFoundException(`Branch with id ${branchId} not found`);
-    }
+    await this.assertBranch(branchId);
     const inventories = await this.prisma.inventory.findMany({
       where: { branchId, deletedAt: null },
       orderBy: { createdAt: 'desc' },
     });
-    return { data: inventories, message: 'Inventories returned successfully' };
+    return ok('Inventories returned successfully', inventories);
   }
 
   async findOne(id: string) {
     const inventory = await this.prisma.inventory.findFirst({
       where: { id, deletedAt: null },
     });
-
     if (!inventory) {
       throw new NotFoundException(`Inventory with id ${id} not found`);
     }
-
-    return { data: inventory, message: 'Inventory returned successfully' };
+    return ok('Inventory returned successfully', inventory);
   }
 
   async update(id: string, updateInventoryDto: UpdateInventoryDto) {
-    const inventory = await this.prisma.inventory.findFirst({
-      where: { id, deletedAt: null },
-    });
-
-    if (!inventory) {
-      throw new NotFoundException(`Inventory with id ${id} not found`);
-    }
-
-    const updatedInventory = await this.prisma.inventory.update({
+    await this.findOne(id);
+    const inventory = await this.prisma.inventory.update({
       where: { id },
-      data: updateInventoryDto,
+      data: {
+        name: updateInventoryDto.name,
+        address: updateInventoryDto.address,
+      },
     });
-
-    return {
-      data: updatedInventory,
-      message: 'Inventory updated successfully',
-    };
+    return ok('Inventory updated successfully', inventory);
   }
 
   async remove(id: string) {
-    const inventory = await this.prisma.inventory.findFirst({
-      where: { id, deletedAt: null },
-    });
-
-    if (!inventory) {
-      throw new NotFoundException(`Inventory with id ${id} not found`);
-    }
+    await this.findOne(id);
     await this.prisma.inventory.update({
       where: { id },
       data: { deletedAt: new Date() },
     });
-
-    return { message: 'Inventory deleted successfully' };
+    return ok('Inventory deleted successfully', null);
   }
 }

@@ -1,20 +1,23 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
 import { PrismaService } from '../prisma/prisma.service';
-import { Prisma } from '../../generated/prisma/client.js';
 import { generateCode } from '../utils/codeGenratror/code.generator';
-import { CreateBranchDto } from './dto/create-branch.dto';
+import { ok } from '../utils/response/response';
 
 @Injectable()
 export class BranchService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   async create(createBranchDto: CreateBranchDto) {
-
-    createBranchDto.code = generateCode('branch')
-
-    const branch = await this.prisma.branch.create({ data: createBranchDto as any });
-    return { data: branch, message: 'Branch created successfully' };
+    const branch = await this.prisma.branch.create({
+      data: {
+        name: createBranchDto.name,
+        address: createBranchDto.address,
+        code: generateCode('branch'),
+      },
+    });
+    return ok('Branch created successfully', branch);
   }
 
   async findAll() {
@@ -22,46 +25,34 @@ export class BranchService {
       where: { deletedAt: null },
       orderBy: { createdAt: 'desc' },
     });
-    return { data: branches, message: 'All branches returned successfully' };
+    return ok('All branches returned successfully', branches);
   }
 
   async findOne(id: string) {
     const branch = await this.prisma.branch.findFirst({
       where: { id, deletedAt: null },
     });
-
     if (!branch) {
       throw new NotFoundException(`Branch with id ${id} not found`);
     }
-
-    return { data: branch, message: 'Branch returned successfully' };
+    return ok('Branch returned successfully', branch);
   }
 
   async update(id: string, updateBranchDto: UpdateBranchDto) {
     await this.findOne(id);
-
-    const updatedBranch = await this.prisma.branch.update({
+    const branch = await this.prisma.branch.update({
       where: { id },
-      data: updateBranchDto,
+      data: { name: updateBranchDto.name, address: updateBranchDto.address },
     });
-
-    return { data: updatedBranch, message: 'Branch updated successfully' };
+    return ok('Branch updated successfully', branch);
   }
 
   async remove(id: string) {
-    const branch = await this.prisma.branch.findFirst({
-      where: { id, deletedAt: null },
-    });
-
-    if (!branch) {
-      throw new NotFoundException(`Branch with id ${id} not found`);
-    }
-
+    await this.findOne(id);
     await this.prisma.branch.update({
       where: { id },
       data: { deletedAt: new Date() },
     });
-
-    return { message: 'Branch deleted successfully' };
+    return ok('Branch deleted successfully', null);
   }
 }

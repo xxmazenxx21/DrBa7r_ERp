@@ -10,6 +10,8 @@ import {
 import { ProdcutInventoryService } from './prodcut-inventory.service';
 import { CreateProdcutInventoryDto } from './dto/create-prodcut-inventory.dto';
 import { UpdateProdcutInventoryDto } from './dto/update-prodcut-inventory.dto';
+import { Roles } from '../decorators/roles.decorator';
+import { Role } from '../utils/enum/enum';
 
 @Controller('prodcut-inventory')
 export class ProdcutInventoryController {
@@ -18,6 +20,7 @@ export class ProdcutInventoryController {
   ) {}
 
   @Post('inventory/:inventoryId')
+  @Roles(Role.SUPERADMIN)
   create(
     @Param('inventoryId') inventoryId: string,
     @Body() createProdcutInventoryDto: CreateProdcutInventoryDto,
@@ -29,16 +32,19 @@ export class ProdcutInventoryController {
   }
 
   @Get('inventory/:inventoryId')
+  @Roles(Role.SUPERADMIN)
   findAllByInventoryId(@Param('inventoryId') inventoryId: string) {
     return this.prodcutInventoryService.findAllByInventoryId(inventoryId);
   }
 
   @Get(':id')
+  @Roles(Role.SUPERADMIN)
   findOne(@Param('id') id: string) {
     return this.prodcutInventoryService.findOne(id);
   }
 
   @Patch(':id')
+  @Roles(Role.SUPERADMIN)
   update(
     @Param('id') id: string,
     @Body() updateProdcutInventoryDto: UpdateProdcutInventoryDto,
@@ -47,6 +53,7 @@ export class ProdcutInventoryController {
   }
 
   @Delete(':id')
+  @Roles(Role.SUPERADMIN)
   remove(@Param('id') id: string) {
     return this.prodcutInventoryService.remove(id);
   }
