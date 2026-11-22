@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { Response } from 'express';
 import { Prisma } from '../../generated/prisma/client.js';
+import { ErrorBody, ErrorCode, errorBody } from '../utils/errors/error-codes';
 
 /**
  * Turns Prisma database errors into clean HTTP responses instead of a 500.
@@ -14,7 +15,10 @@ import { Prisma } from '../../generated/prisma/client.js';
  *   P2003 foreign key violation -> 400 Bad Request  "categoryId does not exist"
  *   P2025 record not found      -> 404 Not Found
  * Anything else is logged and returned as 500.
+ * Every body also has `code` (ALREADY_EXISTS / DOES_NOT_EXIST / NOT_FOUND /
+ * INTERNAL_ERROR) and `field` (column name, or null).
  */
+
 /** The parts of `PrismaClientKnownRequestError.meta` we read. */
 interface PrismaErrorMeta {
   target?: string[] | string;
@@ -31,40 +35,46 @@ export class PrismaExceptionFilter implements ExceptionFilter {
   catch(exception: Prisma.PrismaClientKnownRequestError, host: ArgumentsHost) {
     const res = host.switchToHttp().getResponse<Response>();
     const fields = this.getFields(exception);
-    const fieldText = fields.length ? fields.join(', ') : 'related record';
-
-    let status: number;
-    let error: string;
-    let message: string;
+    const field = fields.length ? fields.join(', ') : null;
+    let body: ErrorBody;
 
     switch (exception.code) {
       case 'P2002':
-        status = HttpStatus.CONFLICT;
-        error = 'Conflict';
-        message = fields.length
-          ? `${fieldText} already exists`
-          : 'A record with this value already exists';
+        body = errorBody(
+          HttpStatus.CONFLICT,
+          field
+            ? `${field} already exists`
+            : 'A record with this value already exists',
+          ErrorCode.ALREADY_EXISTS,
+          field,
+        );
         break;
       case 'P2003':
-        status = HttpStatus.BAD_REQUEST;
-        error = 'Bad Request';
-        message = fields.length
-          ? `${fieldText} does not exist`
-          : 'Related record does not exist';
+        body = errorBody(
+          HttpStatus.BAD_REQUEST,
+          field ? `${field} does not exist` : 'Related record does not exist',
+          ErrorCode.DOES_NOT_EXIST,
+          field,
+        );
         break;
       case 'P2025':
-        status = HttpStatus.NOT_FOUND;
-        error = 'Not Found';
-        message = 'Record not found';
+        body = errorBody(
+          HttpStatus.NOT_FOUND,
+          'Record not found',
+          ErrorCode.NOT_FOUND,
+          field,
+        );
         break;
       default:
         this.logger.error(`${exception.code}: ${exception.message}`);
-        status = HttpStatus.INTERNAL_SERVER_ERROR;
-        error = 'Internal Server Error';
-        message = 'Internal server error';
+        body = errorBody(
+          HttpStatus.INTERNAL_SERVER_ERROR,
+          'Internal server error',
+          ErrorCode.INTERNAL_ERROR,
+        );
     }
 
-    res.status(status).json({ statusCode: status, message, error });
+    res.status(body.statusCode).json(body);
   }
 
   /** Extracts the column name(s) from the different shapes Prisma uses. */

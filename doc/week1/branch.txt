@@ -10,10 +10,11 @@ Authentication & access
 -----------------------
 All endpoints require:  Authorization: Bearer <access_token>   (see auth.txt)
 Only SUPERADMIN can call them:
-  - no / invalid token  -> 401 { "message": "Unauthorized", "statusCode": 401 }
-  - other roles         -> 403 { "message": "You do not have the required roles to access this resource", "error": "Forbidden", "statusCode": 403 }
+  - no / invalid token  -> 401 { "statusCode": 401, "message": "Unauthorized", "error": "Unauthorized", "code": "UNAUTHORIZED", "field": null }
+  - other roles         -> 403 { "statusCode": 403, "message": "You do not have the required roles to access this resource", "error": "Forbidden", "code": "FORBIDDEN", "field": null }
 
 Response shape: every success is { "message": "...", "data": ... }
+Every error has { statusCode, message, error, code, field } (see 00-overview.txt)
 Unknown fields in a body -> 400 "property <name> should not exist"
 Delete is a SOFT delete (record hidden, kept in the database).
 
@@ -79,7 +80,9 @@ BRANCH APIs
    {
      "statusCode": 404,
      "message": "Branch with id cm4branch123 not found",
-     "error": "Not Found"
+     "error": "Not Found",
+     "code": "NOT_FOUND",
+     "field": null
    }
 
 4) Update Branch

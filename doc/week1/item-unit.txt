@@ -10,10 +10,11 @@ Authentication & access
 -----------------------
 All endpoints require:  Authorization: Bearer <access_token>   (see auth.txt)
 Only SUPERADMIN can call them:
-  - no / invalid token  -> 401 { "message": "Unauthorized", "statusCode": 401 }
-  - other roles         -> 403 { "message": "You do not have the required roles to access this resource", "error": "Forbidden", "statusCode": 403 }
+  - no / invalid token  -> 401 { "statusCode": 401, "message": "Unauthorized", "error": "Unauthorized", "code": "UNAUTHORIZED", "field": null }
+  - other roles         -> 403 { "statusCode": 403, "message": "You do not have the required roles to access this resource", "error": "Forbidden", "code": "FORBIDDEN", "field": null }
 
 Response shape: every success is { "message": "...", "data": ... }
+Every error has { statusCode, message, error, code, field } (see 00-overview.txt)
 Unknown fields in a body -> 400 "property <name> should not exist"
 Delete is a SOFT delete (record hidden, kept in the database).
 
@@ -78,7 +79,9 @@ APIs
    {
      "statusCode": 404,
      "message": "ItemUnit with id cm4unit123 not found",
-     "error": "Not Found"
+     "error": "Not Found",
+     "code": "NOT_FOUND",
+     "field": null
    }
 
 4) Update
@@ -118,7 +121,9 @@ APIs
    {
      "statusCode": 400,
      "message": "ItemUnit is used by 3 product(s) and cannot be deleted",
-     "error": "Bad Request"
+     "error": "Bad Request",
+     "code": "BAD_REQUEST",
+     "field": null
    }
-   Change those products' primaryIteamUnitId first (PATCH /products/:id) or delete them.
+   Change those products' primaryItemUnitId first (PATCH /products/:id) or delete them.
    Deleted products do not count.

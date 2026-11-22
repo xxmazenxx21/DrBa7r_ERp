@@ -3,18 +3,19 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { CreateProdcutInventoryDto } from './dto/create-prodcut-inventory.dto';
-import { UpdateProdcutInventoryDto } from './dto/update-prodcut-inventory.dto';
+import { CreateProductInventoryDto } from './dto/create-product-inventory.dto';
+import { UpdateProductInventoryDto } from './dto/update-product-inventory.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { ok } from '../utils/response/response';
+import { ErrorCode, errorBody } from '../utils/errors/error-codes';
 
 @Injectable()
-export class ProdcutInventoryService {
+export class ProductInventoryService {
   constructor(private prisma: PrismaService) {}
 
   async create(
     inventoryId: string,
-    createProdcutInventoryDto: CreateProdcutInventoryDto,
+    createProductInventoryDto: CreateProductInventoryDto,
   ) {
     const inventory = await this.prisma.inventory.findUnique({
       where: {
@@ -26,7 +27,7 @@ export class ProdcutInventoryService {
     if (!inventory) throw new NotFoundException('Inventory not found');
 
     const product = await this.prisma.product.findFirst({
-      where: { id: createProdcutInventoryDto.productId, deletedAt: null },
+      where: { id: createProductInventoryDto.productId, deletedAt: null },
     });
     if (!product) throw new NotFoundException('Product not found');
 
@@ -34,13 +35,20 @@ export class ProdcutInventoryService {
     const existing = await this.prisma.productInventory.findUnique({
       where: {
         productId_inventoryId: {
-          productId: createProdcutInventoryDto.productId,
+          productId: createProductInventoryDto.productId,
           inventoryId,
         },
       },
     });
     if (existing && existing.deletedAt === null) {
-      throw new BadRequestException('Product inventory already exists');
+      throw new BadRequestException(
+        errorBody(
+          400,
+          'Product inventory already exists',
+          ErrorCode.ALREADY_EXISTS,
+          'productId',
+        ),
+      );
     }
     if (existing) {
       // Soft-deleted before: bring the same row back with the new values.
@@ -48,8 +56,8 @@ export class ProdcutInventoryService {
         where: { id: existing.id },
         data: {
           deletedAt: null,
-          quantity: createProdcutInventoryDto.quantity,
-          costPrice: createProdcutInventoryDto.costPrice,
+          quantity: createProductInventoryDto.quantity,
+          costPrice: createProductInventoryDto.costPrice,
         },
       });
       return ok('Product inventory restored successfully', restored);
@@ -58,9 +66,9 @@ export class ProdcutInventoryService {
     const productInventory = await this.prisma.productInventory.create({
       data: {
         inventoryId,
-        productId: createProdcutInventoryDto.productId,
-        quantity: createProdcutInventoryDto.quantity,
-        costPrice: createProdcutInventoryDto.costPrice,
+        productId: createProductInventoryDto.productId,
+        quantity: createProductInventoryDto.quantity,
+        costPrice: createProductInventoryDto.costPrice,
       },
     });
 
@@ -88,7 +96,7 @@ export class ProdcutInventoryService {
         product: {
           include: {
             category: true,
-            primaryIteamUnit: true,
+            primaryItemUnit: true,
           },
         },
       },
@@ -107,7 +115,7 @@ export class ProdcutInventoryService {
         product: {
           include: {
             category: true,
-            primaryIteamUnit: true,
+            primaryItemUnit: true,
           },
         },
         inventory: true,
@@ -123,7 +131,7 @@ export class ProdcutInventoryService {
 
   async update(
     id: string,
-    updateProdcutInventoryDto: UpdateProdcutInventoryDto,
+    updateProductInventoryDto: UpdateProductInventoryDto,
   ) {
     const productInventory = await this.prisma.productInventory.findFirst({
       where: {
@@ -139,11 +147,11 @@ export class ProdcutInventoryService {
     const updatedProductInventory = await this.prisma.productInventory.update({
       where: { id },
       data: {
-        ...(updateProdcutInventoryDto.quantity !== undefined && {
-          quantity: updateProdcutInventoryDto.quantity,
+        ...(updateProductInventoryDto.quantity !== undefined && {
+          quantity: updateProductInventoryDto.quantity,
         }),
-        ...(updateProdcutInventoryDto.costPrice !== undefined && {
-          costPrice: updateProdcutInventoryDto.costPrice,
+        ...(updateProductInventoryDto.costPrice !== undefined && {
+          costPrice: updateProductInventoryDto.costPrice,
         }),
       },
     });

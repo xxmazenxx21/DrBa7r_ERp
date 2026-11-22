@@ -7,7 +7,7 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
-export class CreateProdcutInventoryDto {
+export class CreateProductInventoryDto {
   @IsString()
   @IsNotEmpty()
   productId: string;

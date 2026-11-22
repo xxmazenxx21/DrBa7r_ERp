@@ -36,6 +36,7 @@ Authorization: Bearer {{token}}
 
 ### Create Cairo Inventory
 @cairoBranchId = {{createCairoBranch.response.body.data.id}}
+# @name createCairoInventory
 POST {{baseUrl}}/inventory/branch/{{cairoBranchId}}
 Content-Type: application/json
 Authorization: Bearer {{token}}
@@ -136,3 +137,78 @@ Authorization: Bearer {{token}}
 ### Read All Inventory for Cairo Branch
 GET {{baseUrl}}/inventory/branch/{{cairoBranchId}}
 Authorization: Bearer {{token}}
+
+### List ALL inventories (all branches), newest first
+GET {{baseUrl}}/inventory
+Authorization: Bearer {{token}}
+
+### List inventories of one branch (same as /inventory/branch/:branchId)
+GET {{baseUrl}}/inventory?branchId={{cairoBranchId}}
+Authorization: Bearer {{token}}
+
+### Create an employee in Cairo ("hireDate" can be "YYYY-MM-DD")
+POST {{baseUrl}}/employees/branch/{{cairoBranchId}}
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "fullName": "أحمد محمد",
+  "jobTitle": "مندوب مبيعات",
+  "hireDate": "2025-01-01"
+}
+
+### List ALL employees (optionally ?branchId=...)
+GET {{baseUrl}}/employees
+Authorization: Bearer {{token}}
+
+### Create a category
+# @name createCategory
+POST {{baseUrl}}/categories
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "name": "مشروبات"
+}
+
+### Create an item unit
+# @name createUnit
+POST {{baseUrl}}/item-unit
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "name": "قطعة"
+}
+
+### Create a product
+# itemType: "STOCK" (مخزني, default) | "SERVICE" (خدمي)
+# costingMethod: "WEIGHTED_AVERAGE" (متوسط التكلفة المرجح, default)
+# @name createProduct
+POST {{baseUrl}}/products
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "name": "بيبسي 330 مل",
+  "barcode": "6221234567890",
+  "categoryId": "{{createCategory.response.body.data.id}}",
+  "primaryItemUnitId": "{{createUnit.response.body.data.id}}",
+  "itemType": "STOCK",
+  "costingMethod": "WEIGHTED_AVERAGE",
+  "retailPrice": 15,
+  "wholesalePrice": 12.5,
+  "bulkWholesalePrice": 10
+}
+
+### Put the product in the Cairo warehouse (route is /product-inventory)
+@cairoInventoryId = {{createCairoInventory.response.body.data.id}}
+POST {{baseUrl}}/product-inventory/inventory/{{cairoInventoryId}}
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "productId": "{{createProduct.response.body.data.id}}",
+  "quantity": 100,
+  "costPrice": 12.5
+}

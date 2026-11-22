@@ -2,7 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { PrismaService } from '../prisma/prisma.service';
-import { generateCode } from '../utils/codeGenratror/code.generator';
+import { generateCode } from '../utils/code-generator/code.generator';
 import { ok } from '../utils/response/response';
 import { assertNotUsedByDeleted } from '../utils/unique/deleted-unique';
 
@@ -46,6 +46,16 @@ export class EmployeesService {
       orderBy: { createdAt: 'desc' },
     });
     return ok('Employees returned successfully', employees);
+  }
+
+  /** All active employees, newest first, optionally only one branch's. */
+  async findAll(branchId?: string) {
+    if (branchId) await this.assertBranch(branchId);
+    const employees = await this.prisma.employee.findMany({
+      where: { deletedAt: null, ...(branchId && { branchId }) },
+      orderBy: { createdAt: 'desc' },
+    });
+    return ok('All employees returned successfully', employees);
   }
 
   async findOne(id: string) {

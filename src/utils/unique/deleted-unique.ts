@@ -1,4 +1,5 @@
 import { ConflictException } from '@nestjs/common';
+import { ErrorCode, errorBody } from '../errors/error-codes';
 
 /**
  * The part of a Prisma model delegate (e.g. `prisma.employee`) this helper uses.
@@ -39,7 +40,12 @@ export async function assertNotUsedByDeleted(
     });
     if (deletedRow) {
       throw new ConflictException(
-        `${field} belongs to a deleted ${entityName}`,
+        errorBody(
+          409,
+          `${field} belongs to a deleted ${entityName}`,
+          ErrorCode.BELONGS_TO_DELETED,
+          field,
+        ),
       );
     }
   }

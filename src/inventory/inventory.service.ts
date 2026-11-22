@@ -38,6 +38,16 @@ export class InventoryService {
     return ok('Inventories returned successfully', inventories);
   }
 
+  /** All active inventories, newest first, optionally only one branch's. */
+  async findAll(branchId?: string) {
+    if (branchId) await this.assertBranch(branchId);
+    const inventories = await this.prisma.inventory.findMany({
+      where: { deletedAt: null, ...(branchId && { branchId }) },
+      orderBy: { createdAt: 'desc' },
+    });
+    return ok('All inventories returned successfully', inventories);
+  }
+
   async findOne(id: string) {
     const inventory = await this.prisma.inventory.findFirst({
       where: { id, deletedAt: null },

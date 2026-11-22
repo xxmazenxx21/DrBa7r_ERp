@@ -6,7 +6,7 @@ import {
 import { CreateItemUnitDto } from './dto/create-item-unit.dto';
 import { UpdateItemUnitDto } from './dto/update-item-unit.dto';
 import { PrismaService } from '../prisma/prisma.service';
-import { generateCode } from '../utils/codeGenratror/code.generator';
+import { generateCode } from '../utils/code-generator/code.generator';
 import { ok } from '../utils/response/response';
 
 @Injectable()
@@ -50,7 +50,7 @@ export class ItemUnitService {
   async remove(id: string) {
     await this.findOne(id);
     const productsCount = await this.prisma.product.count({
-      where: { primaryIteamUnitId: id, deletedAt: null },
+      where: { primaryItemUnitId: id, deletedAt: null },
     });
     if (productsCount > 0) {
       throw new BadRequestException(

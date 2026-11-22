@@ -6,12 +6,14 @@ import {
   Patch,
   Param,
   Delete,
+  Query,
 } from '@nestjs/common';
 import { EmployeesService } from './employees.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { Roles } from '../decorators/roles.decorator';
 import { Role } from '../utils/enum/enum';
+import { BranchFilterDto } from '../utils/dto/branch-filter.dto';
 
 @Controller('employees')
 export class EmployeesController {
@@ -30,6 +32,13 @@ export class EmployeesController {
   @Roles(Role.SUPERADMIN)
   findAllByBranch(@Param('branchId') branchId: string) {
     return this.employeesService.findAllByBranch(branchId);
+  }
+
+  // GET /employees  or  GET /employees?branchId=...  (must stay BEFORE @Get(':id'))
+  @Get()
+  @Roles(Role.SUPERADMIN)
+  findAll(@Query() query: BranchFilterDto) {
+    return this.employeesService.findAll(query.branchId);
   }
 
   @Get(':id')

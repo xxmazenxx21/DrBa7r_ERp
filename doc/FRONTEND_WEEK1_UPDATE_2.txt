@@ -1,0 +1,238 @@
+FRONTEND - WEEK 1, UPDATE 2
+===========================
+
+What is this?
+-------------
+A second, smaller round of backend changes. Read it AFTER
+doc/FRONTEND_WEEK1_READ_FIRST.txt and BEFORE the module files in doc/week1/.
+
+What changed:
+  1. Three misspelled names were fixed (route, field, role)      -> BREAKING
+  2. Product itemType / costingMethod are now text values         -> BREAKING
+  3. Two new list endpoints: GET /inventory and GET /employees    -> new
+  4. Every error now has a stable "code" and a "field"            -> new (use it to translate)
+
+Base URL (unchanged)
+--------------------
+Production:      https://drba7rerp-production.up.railway.app
+Local (Docker):  http://localhost:3000
+
+
+=====================================================================
+PART 1 - RENAMED (BREAKING)
+=====================================================================
+Existing data was migrated automatically. Only the NAMES changed.
+
+---------------------------------------------------------
+1.1 Route: /prodcut-inventory -> /product-inventory
+---------------------------------------------------------
+Every product-inventory (stock) endpoint moved:
+
+BEFORE:  POST   /prodcut-inventory/inventory/:inventoryId
+         GET    /prodcut-inventory/inventory/:inventoryId
+         GET    /prodcut-inventory/:id
+         PATCH  /prodcut-inventory/:id
+         DELETE /prodcut-inventory/:id
+
+AFTER:   POST   /product-inventory/inventory/:inventoryId
+         GET    /product-inventory/inventory/:inventoryId
+         GET    /product-inventory/:id
+         PATCH  /product-inventory/:id
+         DELETE /product-inventory/:id
+
+The old URL now returns 404:
+{ "statusCode": 404, "message": "Cannot GET /prodcut-inventory/inventory/x", "error": "Not Found", "code": "NOT_FOUND", "field": null }
+
+---------------------------------------------------------
+1.2 Product field: primaryIteamUnitId -> primaryItemUnitId
+---------------------------------------------------------
+In requests AND responses. The nested object was renamed too:
+primaryIteamUnit -> primaryItemUnit.
+
+BEFORE (request):  { "name": "Pepsi", "primaryIteamUnitId": "cm4unit123", ... }
+AFTER  (request):  { "name": "Pepsi", "primaryItemUnitId": "cm4unit123", ... }
+
+BEFORE (response): { ..., "primaryIteamUnitId": "cm4unit123", "primaryIteamUnit": { "id": "cm4unit123", "name": "قطعة", ... } }
+AFTER  (response): { ..., "primaryItemUnitId": "cm4unit123", "primaryItemUnit": { "id": "cm4unit123", "name": "قطعة", ... } }
+
+Sending the old name now fails:
+{ "statusCode": 400, "message": ["property primaryIteamUnitId should not exist", "primaryItemUnitId should not be empty", "primaryItemUnitId must be a string"], "error": "Bad Request", "code": "VALIDATION_FAILED", "field": "primaryIteamUnitId" }
+
+The error message for a missing unit changed with it:
+BEFORE: "primaryIteamUnitId does not exist"
+AFTER:  "primaryItemUnitId does not exist"
+Also in GET /product-inventory/... responses: product.primaryItemUnit.
+
+---------------------------------------------------------
+1.3 Role: ACCOUNTENT -> ACCOUNTANT
+---------------------------------------------------------
+Roles are now:  SUPERADMIN | ADMIN | ACCOUNTANT | SALES | USER
+
+BEFORE:  { "username": "acc1", "password": "secret123", "role": "ACCOUNTENT" }
+AFTER:   { "username": "acc1", "password": "secret123", "role": "ACCOUNTANT" }
+
+Existing ACCOUNTENT users are now ACCOUNTANT (login returns "role": "ACCOUNTANT").
+Sending the old value fails:
+{ "statusCode": 400, "message": ["role must be one of the following values: SUPERADMIN, ADMIN, ACCOUNTANT, SALES, USER"], "error": "Bad Request", "code": "VALIDATION_FAILED", "field": "role" }
+Update your role dropdowns / role checks.
+
+
+=====================================================================
+PART 2 - PRODUCT itemType / costingMethod ARE TEXT VALUES (BREAKING)
+=====================================================================
+They were numbers. Now they are fixed text values (enums).
+
+    field          value              Arabic label             note
+    -------------  -----------------  -----------------------  -----------------------
+    itemType       "STOCK"            مخزني                    default
+                   "SERVICE"          خدمي                     no stock
+    costingMethod  "WEIGHTED_AVERAGE" متوسط التكلفة المرجح     default, only value now
+
+Both are OPTIONAL when creating a product (defaults above). In responses they
+are always present.
+
+BEFORE (request):  { ..., "itemType": 1, "costingMethod": 1 }
+AFTER  (request):  { ..., "itemType": "STOCK", "costingMethod": "WEIGHTED_AVERAGE" }
+                   or just leave both out -> STOCK / WEIGHTED_AVERAGE
+
+BEFORE (response): { ..., "itemType": 1, "costingMethod": null }
+AFTER  (response): { ..., "itemType": "STOCK", "costingMethod": "WEIGHTED_AVERAGE" }
+
+Old products were converted: itemType 2 -> "SERVICE", any other number ->
+"STOCK"; every costingMethod -> "WEIGHTED_AVERAGE".
+
+Sending a number or an unknown value fails:
+{ "statusCode": 400, "message": ["itemType must be one of the following values: STOCK, SERVICE"], "error": "Bad Request", "code": "VALIDATION_FAILED", "field": "itemType" }
+
+Tip: show the Arabic label in the UI, send/compare the English value.
+
+
+=====================================================================
+PART 3 - NEW: list ALL warehouses / ALL employees
+=====================================================================
+Before, you could only list per branch. Now:
+
+    GET /inventory                    all inventories (warehouses), all branches
+    GET /inventory?branchId=<id>      only that branch's
+    GET /employees                    all employees, all branches
+    GET /employees?branchId=<id>      only that branch's
+
+- Only active (not deleted) records, newest first.
+- The old per-branch routes still work and give the same result:
+  GET /inventory/branch/:branchId, GET /employees/branch/:branchId
+
+Response:
+{
+  "message": "All inventories returned successfully",      (or "All employees returned successfully")
+  "data": [ { ...inventory or employee object }, ... ]
+}
+
+Errors:
+  branchId given but not found / deleted -> 404
+  { "statusCode": 404, "message": "Branch with id cm4branch123 not found", "error": "Not Found", "code": "NOT_FOUND", "field": null }
+  empty  ?branchId=                     -> 400 VALIDATION_FAILED, field "branchId"
+  any other query param (e.g. ?foo=1)    -> 400 VALIDATION_FAILED, field "foo"
+
+
+=====================================================================
+PART 4 - ERROR CODES (use them to translate errors)
+=====================================================================
+Every error response now has two MORE fields: "code" and "field".
+statusCode, message and error are unchanged (same text as before).
+
+BEFORE:
+{ "statusCode": 409, "message": "username already exists", "error": "Conflict" }
+AFTER:
+{ "statusCode": 409, "message": "username already exists", "error": "Conflict", "code": "ALREADY_EXISTS", "field": "username" }
+
+BEFORE (401 had no "error"):
+{ "message": "Unauthorized", "statusCode": 401 }
+AFTER:
+{ "statusCode": 401, "message": "Unauthorized", "error": "Unauthorized", "code": "UNAUTHORIZED", "field": null }
+
+- "code"  : one of the 9 values below. It will NOT change; the English
+            "message" might. Translate with code + field, not with message.
+- "field" : the field the error is about (e.g. "username", "categoryId"),
+            or null. For VALIDATION_FAILED it is the FIRST invalid field.
+- "message": still an ARRAY for VALIDATION_FAILED, a string otherwise.
+
+All codes, with a suggested Arabic message ({field} = Arabic field label, see below):
+
+  code                status  field              suggested Arabic message
+  ------------------  ------  -----------------  -------------------------------------------------
+  VALIDATION_FAILED   400     first bad field    البيانات المدخلة غير صحيحة، راجع حقل {field}
+  DOES_NOT_EXIST      400     the id field       {field} المختار غير موجود أو تم حذفه
+  BAD_REQUEST         400     null               لا يمكن تنفيذ الطلب، راجع البيانات وحاول مرة أخرى
+  UNAUTHORIZED        401     null               يجب تسجيل الدخول أولاً
+                                                 (on the login screen: اسم المستخدم أو كلمة المرور غير صحيحة)
+  FORBIDDEN           403     null               ليس لديك صلاحية للقيام بهذا الإجراء
+  NOT_FOUND           404     null               العنصر المطلوب غير موجود أو تم حذفه
+  ALREADY_EXISTS      409     the unique field   {field} مستخدم بالفعل، اختر قيمة أخرى
+                      (400 + field "productId" for "Product inventory already exists":
+                       هذا الصنف موجود بالفعل في هذا المخزن، عدّل الكمية بدلاً من إضافته)
+  BELONGS_TO_DELETED  409     the unique field   {field} مرتبط بسجل محذوف ولا يمكن استخدامه
+  INTERNAL_ERROR      500     null               حدث خطأ غير متوقع، حاول مرة أخرى لاحقاً
+
+Where each one comes from (examples):
+  VALIDATION_FAILED   missing/invalid field, unknown field, wrong enum value
+  DOES_NOT_EXIST      categoryId / primaryItemUnitId (missing or deleted), branchId /
+                      employeeId on a user
+  BAD_REQUEST         "Category is used by 3 product(s) and cannot be deleted"
+                      (also for item units) -> show:
+                      لا يمكن الحذف لأنه مستخدم في أصناف حالية
+                      malformed JSON body
+  UNAUTHORIZED        no token, bad token, "Invalid credentials" on login
+  FORBIDDEN           logged in, role is not SUPERADMIN
+  NOT_FOUND           "Branch with id ... not found", "customer does not exist",
+                      unknown URL, ?branchId= of a missing branch
+  ALREADY_EXISTS      username, email, employeeId (users), nationalId (employees),
+                      barcode (products)
+  BELONGS_TO_DELETED  same fields, when the value belongs to a deleted record
+  INTERNAL_ERROR      unexpected server problem
+
+Arabic labels for "field":
+  username            اسم المستخدم
+  password            كلمة المرور
+  email               البريد الإلكتروني
+  role                الصلاحية
+  employeeId          الموظف
+  branchId            الفرع
+  nationalId          الرقم القومي
+  fullName            الاسم بالكامل
+  name                الاسم
+  address             العنوان
+  barcode             الباركود
+  categoryId          التصنيف
+  primaryItemUnitId   الوحدة الأساسية
+  productId           الصنف
+  itemType            نوع الصنف
+  costingMethod       طريقة حساب التكلفة
+  retailPrice         سعر التجزئة
+  wholesalePrice      سعر الجملة
+  bulkWholesalePrice  سعر جملة الجملة
+  quantity            الكمية
+  costPrice           سعر التكلفة
+  hireDate            تاريخ التعيين
+  (unknown field)     use the English name as-is
+
+Suggested code:
+  function errorText(err) {
+    const label = FIELD_AR[err.field] ?? err.field ?? '';
+    return (ERROR_AR[err.code] ?? ERROR_AR.INTERNAL_ERROR).replace('{field}', label);
+  }
+
+
+=====================================================================
+PART 5 - CHECKLIST
+=====================================================================
+[ ] Replace every /prodcut-inventory URL with /product-inventory.
+[ ] Replace primaryIteamUnitId -> primaryItemUnitId and
+    primaryIteamUnit -> primaryItemUnit (forms, tables, response reading).
+[ ] Replace the role ACCOUNTENT -> ACCOUNTANT (dropdowns, role checks).
+[ ] Product form: itemType select (STOCK = مخزني, SERVICE = خدمي),
+    costingMethod (WEIGHTED_AVERAGE = متوسط التكلفة المرجح). Send the
+    English value, show the Arabic label. Stop sending numbers.
+[ ] Use GET /inventory and GET /employees where you need all branches.
+[ ] Translate errors with "code" + "field" (table above) instead of "message".
+[ ] 401 bodies now also have "error": "Unauthorized" (no action needed if you
+    use statusCode or code).

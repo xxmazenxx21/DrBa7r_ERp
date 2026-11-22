@@ -1,3 +1,14 @@
+/// STOCK = مخزني (tracked in warehouses), SERVICE = خدمي (no stock)
+enum ItemType {
+  STOCK
+  SERVICE
+}
+
+/// WEIGHTED_AVERAGE = متوسط التكلفة المرجح
+enum CostingMethod {
+  WEIGHTED_AVERAGE
+}
+
 model Product {
   id                 String             @id @default(cuid())
   code               String             @unique
@@ -5,10 +16,10 @@ model Product {
   name               String
   categoryId         String
   category           Categories         @relation(fields: [categoryId], references: [id])
-  primaryIteamUnitId String
-  primaryIteamUnit   ItemUnit           @relation(fields: [primaryIteamUnitId], references: [id])
-  itemType           Int
-  costingMethod      Int?
+  primaryItemUnitId  String
+  primaryItemUnit    ItemUnit           @relation(fields: [primaryItemUnitId], references: [id])
+  itemType           ItemType           @default(STOCK)
+  costingMethod      CostingMethod      @default(WEIGHTED_AVERAGE)
   retailPrice        Decimal            @db.Decimal(18, 4)
   wholesalePrice     Decimal            @db.Decimal(18, 4)
   bulkWholesalePrice Decimal            @db.Decimal(18, 4)

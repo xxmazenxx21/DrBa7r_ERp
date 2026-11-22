@@ -10,10 +10,11 @@ Authentication & access
 -----------------------
 All endpoints require:  Authorization: Bearer <access_token>   (see auth.txt)
 Only SUPERADMIN can call them:
-  - no / invalid token  -> 401 { "message": "Unauthorized", "statusCode": 401 }
-  - other roles         -> 403 { "message": "You do not have the required roles to access this resource", "error": "Forbidden", "statusCode": 403 }
+  - no / invalid token  -> 401 { "statusCode": 401, "message": "Unauthorized", "error": "Unauthorized", "code": "UNAUTHORIZED", "field": null }
+  - other roles         -> 403 { "statusCode": 403, "message": "You do not have the required roles to access this resource", "error": "Forbidden", "code": "FORBIDDEN", "field": null }
 
 Response shape: every success is { "message": "...", "data": ... }
+Every error has { statusCode, message, error, code, field } (see 00-overview.txt)
 Unknown fields in a body -> 400 "property <name> should not exist"
 Delete is a SOFT delete (record hidden, kept in the database).
 
@@ -71,14 +72,18 @@ EMPLOYEES APIs
    {
      "statusCode": 404,
      "message": "Branch with id cm4branch123 not found",
-     "error": "Not Found"
+     "error": "Not Found",
+     "code": "NOT_FOUND",
+     "field": null
    }
 
    Error Response (409 - national ID used by an ACTIVE employee):
    {
      "statusCode": 409,
      "message": "nationalId already exists",
-     "error": "Conflict"
+     "error": "Conflict",
+     "code": "ALREADY_EXISTS",
+     "field": "nationalId"
    }
 
    Error Response (409 - national ID belongs to a DELETED employee; national
@@ -86,7 +91,9 @@ EMPLOYEES APIs
    {
      "statusCode": 409,
      "message": "nationalId belongs to a deleted employee",
-     "error": "Conflict"
+     "error": "Conflict",
+     "code": "BELONGS_TO_DELETED",
+     "field": "nationalId"
    }
 
 2) Get All Employees By Branch
@@ -102,6 +109,36 @@ EMPLOYEES APIs
 
    Error Response (404 - branch not found): same as Create.
 
+2b) Get All Employees (optionally filtered by branch)   ** NEW **
+   Method: GET
+   URL: /employees
+        /employees?branchId=cm4branch123
+   Description: All active (not deleted) employees of ALL branches,
+                newest first. Add ?branchId= to get only one branch's
+                (same result as GET /employees/branch/:branchId).
+
+   Query Parameters:
+   - branchId: optional string (id of an existing branch). Must not be empty.
+     Any other query parameter -> 400 "property <name> should not exist".
+
+   Response Example:
+   {
+     "message": "All employees returned successfully",
+     "data": [ { ...employee object }, { ...employee object } ]
+   }
+
+   Error Response (404 - branchId given but the branch is not found or deleted):
+   {
+     "statusCode": 404,
+     "message": "Branch with id cm4branch123 not found",
+     "error": "Not Found",
+     "code": "NOT_FOUND",
+     "field": null
+   }
+
+   Error Response (400 - empty ?branchId=):
+   { "statusCode": 400, "message": ["branchId should not be empty"], "error": "Bad Request", "code": "VALIDATION_FAILED", "field": "branchId" }
+
 3) Get Employee By ID
    Method: GET
    URL: /employees/:id
@@ -116,7 +153,9 @@ EMPLOYEES APIs
    {
      "statusCode": 404,
      "message": "Employee with id cm4employee123 not found",
-     "error": "Not Found"
+     "error": "Not Found",
+     "code": "NOT_FOUND",
+     "field": null
    }
 
 4) Update Employee

@@ -8,7 +8,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { CategoriesModule } from './categories/categories.module';
 import { ItemUnitModule } from './item-unit/item-unit.module';
 import { ProductsModule } from './products/products.module';
-import { ProdcutInventoryModule } from './prodcut-inventory/prodcut-inventory.module';
+import { ProductInventoryModule } from './product-inventory/product-inventory.module';
 import { CustomerModule } from './customer/customer.module';
 import { SupplierModule } from './supplier/supplier.module';
 import { EmployeesModule } from './employees/employees.module';
@@ -37,7 +37,7 @@ import { RolesGuard } from './guards/roles.guard';
     CategoriesModule,
     ItemUnitModule,
     ProductsModule,
-    ProdcutInventoryModule,
+    ProductInventoryModule,
     CustomerModule,
     SupplierModule,
     EmployeesModule,

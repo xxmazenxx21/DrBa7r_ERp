@@ -6,8 +6,9 @@ import {
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { PrismaService } from '../prisma/prisma.service';
-import { generateCode } from '../utils/codeGenratror/code.generator';
+import { generateCode } from '../utils/code-generator/code.generator';
 import { ok } from '../utils/response/response';
+import { ErrorCode, errorBody } from '../utils/errors/error-codes';
 import { assertNotUsedByDeleted } from '../utils/unique/deleted-unique';
 
 @Injectable()
@@ -18,25 +19,40 @@ export class ProductsService {
    * A soft-deleted (or missing) category / unit is treated like a bad FK:
    * same 400 message the PrismaExceptionFilter gives for FK errors.
    */
-  private async assertRefs(categoryId?: string, primaryIteamUnitId?: string) {
+  private async assertRefs(categoryId?: string, primaryItemUnitId?: string) {
     if (categoryId !== undefined) {
       const category = await this.prisma.categories.findFirst({
         where: { id: categoryId, deletedAt: null },
       });
-      if (!category) throw new BadRequestException('categoryId does not exist');
+      if (!category)
+        throw new BadRequestException(
+          errorBody(
+            400,
+            'categoryId does not exist',
+            ErrorCode.DOES_NOT_EXIST,
+            'categoryId',
+          ),
+        );
     }
-    if (primaryIteamUnitId !== undefined) {
+    if (primaryItemUnitId !== undefined) {
       const unit = await this.prisma.itemUnit.findFirst({
-        where: { id: primaryIteamUnitId, deletedAt: null },
+        where: { id: primaryItemUnitId, deletedAt: null },
       });
       if (!unit) {
-        throw new BadRequestException('primaryIteamUnitId does not exist');
+        throw new BadRequestException(
+          errorBody(
+            400,
+            'primaryItemUnitId does not exist',
+            ErrorCode.DOES_NOT_EXIST,
+            'primaryItemUnitId',
+          ),
+        );
       }
     }
   }
 
   async create(dto: CreateProductDto) {
-    await this.assertRefs(dto.categoryId, dto.primaryIteamUnitId);
+    await this.assertRefs(dto.categoryId, dto.primaryItemUnitId);
     await assertNotUsedByDeleted(this.prisma.product, 'product', {
       barcode: dto.barcode,
     });
@@ -46,7 +62,7 @@ export class ProductsService {
         barcode: dto.barcode,
         name: dto.name,
         categoryId: dto.categoryId,
-        primaryIteamUnitId: dto.primaryIteamUnitId,
+        primaryItemUnitId: dto.primaryItemUnitId,
         itemType: dto.itemType,
         costingMethod: dto.costingMethod,
         retailPrice: dto.retailPrice,
@@ -62,7 +78,7 @@ export class ProductsService {
   async findAll() {
     const products = await this.prisma.product.findMany({
       where: { deletedAt: null },
-      include: { category: true, primaryIteamUnit: true },
+      include: { category: true, primaryItemUnit: true },
       orderBy: { createdAt: 'desc' },
     });
     return ok('Products fetched successfully', products);
@@ -73,7 +89,7 @@ export class ProductsService {
       where: { id, deletedAt: null },
       include: {
         category: true,
-        primaryIteamUnit: true,
+        primaryItemUnit: true,
         productInventories: {
           where: { deletedAt: null },
           include: { inventory: true },
@@ -88,7 +104,7 @@ export class ProductsService {
 
   async update(id: string, dto: UpdateProductDto) {
     await this.findOne(id);
-    await this.assertRefs(dto.categoryId, dto.primaryIteamUnitId);
+    await this.assertRefs(dto.categoryId, dto.primaryItemUnitId);
     await assertNotUsedByDeleted(this.prisma.product, 'product', {
       barcode: dto.barcode,
     });
@@ -98,7 +114,7 @@ export class ProductsService {
         barcode: dto.barcode,
         name: dto.name,
         categoryId: dto.categoryId,
-        primaryIteamUnitId: dto.primaryIteamUnitId,
+        primaryItemUnitId: dto.primaryItemUnitId,
         itemType: dto.itemType,
         costingMethod: dto.costingMethod,
         retailPrice: dto.retailPrice,

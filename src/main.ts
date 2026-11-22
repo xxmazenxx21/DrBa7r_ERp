@@ -1,19 +1,17 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { PrismaExceptionFilter } from './filters/prisma-exception.filter';
+import { HttpExceptionFilter } from './filters/http-exception.filter';
+import { AppValidationPipe } from './pipes/app-validation.pipe';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true, // unknown field -> 400 "property X should not exist"
-      transform: true,
-    }),
-  );
-  app.useGlobalFilters(new PrismaExceptionFilter());
+  // whitelist + forbidNonWhitelisted + transform; errors get code VALIDATION_FAILED
+  app.useGlobalPipes(new AppValidationPipe());
+  // Order matters: the catch-all filter first, the specific Prisma one last,
+  // so Prisma errors reach PrismaExceptionFilter.
+  app.useGlobalFilters(new HttpExceptionFilter(), new PrismaExceptionFilter());
 
   app.enableCors({
     origin: true,

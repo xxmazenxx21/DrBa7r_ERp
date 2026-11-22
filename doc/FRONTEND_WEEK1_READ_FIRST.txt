@@ -12,8 +12,15 @@ is ever deleted for real anymore (soft delete everywhere).
 
 How to read the docs:
   1. Read THIS file (what changed, what to fix).
-  2. Then read doc/week1/00-overview.txt (general rules, errors).
-  3. Then the module files in doc/week1/ (exact bodies for every endpoint).
+  2. Then read doc/FRONTEND_WEEK1_UPDATE_2.txt (the next round of changes:
+     renamed route/field/role, product enums, 2 new list endpoints, and
+     error codes for translation).
+  3. Then read doc/week1/00-overview.txt (general rules, errors).
+  4. Then the module files in doc/week1/ (exact bodies for every endpoint).
+
+NOTE: this file already uses the NEW names from UPDATE_2 (/product-inventory,
+primaryItemUnitId, ACCOUNTANT). The error bodies shown below are shortened:
+since UPDATE_2 every error ALSO has "code" and "field" (see UPDATE_2).
 
 Base URL (unchanged)
 --------------------
@@ -71,7 +78,7 @@ PRODUCTS (/products)
   AFTER  delete:                 { "message": "Product deleted successfully", "data": null }
   -> replace  res.product / res.products  with  res.data
 
-PRODUCT INVENTORY (/prodcut-inventory)
+PRODUCT INVENTORY (/product-inventory)
   BEFORE create/update:  { "message": "...", "productInventory": { ... } }
   BEFORE delete:         { "message": "Product inventory deleted successfully" }
   AFTER  create/update:  { "message": "...", "data": { ... } }
@@ -126,7 +133,7 @@ Error responses did NOT change shape (see 00-overview.txt).
 Every endpoint now requires a SUPERADMIN, EXCEPT:
     POST /auth/signup, POST /auth/login, POST /users/login   (public)
 
-A logged-in user with any other role (ADMIN, ACCOUNTENT, SALES, USER) gets on
+A logged-in user with any other role (ADMIN, ACCOUNTANT, SALES, USER) gets on
 EVERY endpoint:
 
 BEFORE: 200 (any logged-in user could call everything)
@@ -160,7 +167,7 @@ POST /branch  { "name": "Cairo", "id": "x", "createdAt": "2026-01-01" }
 NEVER send these in a body (common mistake when you re-send an object you got
 from the API, e.g. on an edit form):
     id, createdAt, updatedAt, deletedAt, lastLoginDate,
-    nested objects like category, primaryIteamUnit, product, inventory,
+    nested objects like category, primaryItemUnit, product, inventory,
     productInventories
 Also don't send branchId in the body of POST /inventory/branch/:branchId or
 POST /employees/branch/:branchId (it goes in the URL).
@@ -191,7 +198,7 @@ AFTER:  DELETE hides it (it stays in the database):
   - it can't be used on a product anymore:
       POST/PATCH /products with that categoryId ->
       { "statusCode": 400, "message": "categoryId does not exist", "error": "Bad Request" }
-      (same with "primaryIteamUnitId does not exist")
+      (same with "primaryItemUnitId does not exist")
   - delete is still blocked (400) while an ACTIVE product uses it; deleted
     products don't count anymore.
 Category and item-unit objects now also have createdAt, updatedAt, deletedAt.
@@ -255,7 +262,7 @@ PART 3 - NEW BEHAVIOR (not breaking, but handle it)
 ---------------------------------------------------------
 3.1 Re-adding a deleted product to a warehouse RESTORES it
 ---------------------------------------------------------
-POST /prodcut-inventory/inventory/:inventoryId  { productId, quantity, costPrice }
+POST /product-inventory/inventory/:inventoryId  { productId, quantity, costPrice }
 
 BEFORE: if this product was in this warehouse before and was deleted -> 409 error.
 AFTER:  the old record comes back (same id) with the NEW quantity and costPrice.

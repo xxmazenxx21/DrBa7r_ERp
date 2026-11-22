@@ -1,8 +1,9 @@
 ERP API - Overview
 ==================
 
->>> Frontend: read doc/FRONTEND_WEEK1_READ_FIRST.txt first (what changed and
->>> what you must update), then this file.
+>>> Frontend: read doc/FRONTEND_WEEK1_READ_FIRST.txt first, then
+>>> doc/FRONTEND_WEEK1_UPDATE_2.txt (what changed and what you must update),
+>>> then this file.
 
 Base URL
 --------
@@ -19,7 +20,7 @@ Files in this folder (one per module)
   categories.txt         /categories
   item-unit.txt          /item-unit
   products.txt           /products
-  product-inventory.txt  /prodcut-inventory  (stock of a product in a warehouse)
+  product-inventory.txt  /product-inventory  (stock of a product in a warehouse)
   customer.txt           /customer
   supplier.txt           /supplier
   employees.txt          /employees
@@ -88,56 +89,92 @@ General rules
 5. PATCH = partial update: send only the fields you want to change.
 
 6. Send ONLY the fields documented for each endpoint. Any unknown field is
-   rejected with 400 "property <name> should not exist".
+   rejected with 400 "property <name> should not exist". This includes the
+   query string of list endpoints (e.g. GET /inventory?foo=1 -> 400).
 
 7. Request bodies are JSON:  Content-Type: application/json
 
 
 Common error responses
 ----------------------
+EVERY error response has the same 5 fields:
+
+    {
+      "statusCode": 404,                 HTTP status
+      "message": "...",                  English text (an ARRAY for validation errors)
+      "error": "Not Found",              HTTP status name
+      "code": "NOT_FOUND",               stable code - use it to TRANSLATE / decide
+      "field": null                      the field the error is about, or null
+    }
+
+Error codes:
+    code                 status  field                 when
+    -------------------  ------  --------------------  ------------------------------------------
+    VALIDATION_FAILED    400     first invalid field   body/query failed validation, unknown field
+    DOES_NOT_EXIST       400     the id field          a related id does not exist (categoryId...)
+    BAD_REQUEST          400     null                  other bad requests (e.g. "is used by N
+                                                       product(s)", malformed JSON)
+    UNAUTHORIZED         401     null                  no token, bad token, wrong login
+    FORBIDDEN            403     null                  logged in, but role is not SUPERADMIN
+    NOT_FOUND            404     null                  record (or route) not found / deleted
+    ALREADY_EXISTS       409     the unique field      value already used by an ACTIVE record
+                         (400 for "Product inventory already exists", field "productId")
+    BELONGS_TO_DELETED   409     the unique field      value belongs to a DELETED record
+    INTERNAL_ERROR       500     null                  unexpected server problem
+
+Translate with "code" (+ "field"), not by reading "message": the message text
+may change, the codes will not. Arabic messages for every code:
+doc/FRONTEND_WEEK1_UPDATE_2.txt
+
 400 Validation error ("message" is an ARRAY):
 {
+  "statusCode": 400,
   "message": ["name should not be empty", "name must be a string"],
   "error": "Bad Request",
-  "statusCode": 400
+  "code": "VALIDATION_FAILED",
+  "field": "name"
 }
 
 400 Unknown field sent ("message" is an ARRAY):
 {
+  "statusCode": 400,
   "message": ["property foo should not exist"],
   "error": "Bad Request",
-  "statusCode": 400
+  "code": "VALIDATION_FAILED",
+  "field": "foo"
 }
 
 400 Related record not found (an id that does not exist, e.g. categoryId on a
 product, branchId / employeeId on a user; for products a DELETED category or
 unit also counts as "does not exist"):
-{ "statusCode": 400, "message": "categoryId does not exist", "error": "Bad Request" }
+{ "statusCode": 400, "message": "categoryId does not exist", "error": "Bad Request", "code": "DOES_NOT_EXIST", "field": "categoryId" }
 
 401 Unauthorized (no token, invalid token):
-{ "message": "Unauthorized", "statusCode": 401 }
+{ "statusCode": 401, "message": "Unauthorized", "error": "Unauthorized", "code": "UNAUTHORIZED", "field": null }
 
 403 Forbidden (logged in, but the role is not SUPERADMIN):
 {
+  "statusCode": 403,
   "message": "You do not have the required roles to access this resource",
   "error": "Forbidden",
-  "statusCode": 403
+  "code": "FORBIDDEN",
+  "field": null
 }
 
 404 Not found (message differs per module):
-{ "statusCode": 404, "message": "Branch with id xxx not found", "error": "Not Found" }
+{ "statusCode": 404, "message": "Branch with id xxx not found", "error": "Not Found", "code": "NOT_FOUND", "field": null }
 
 409 Conflict (a unique value is already used - username, email, barcode,
 nationalId, employeeId on a user...). "message" names the field:
-{ "statusCode": 409, "message": "username already exists", "error": "Conflict" }
+{ "statusCode": 409, "message": "username already exists", "error": "Conflict", "code": "ALREADY_EXISTS", "field": "username" }
 If the value belongs to a DELETED record, the message says so (the deleted
 record is NOT restored):
-{ "statusCode": 409, "message": "nationalId belongs to a deleted employee", "error": "Conflict" }
+{ "statusCode": 409, "message": "nationalId belongs to a deleted employee", "error": "Conflict", "code": "BELONGS_TO_DELETED", "field": "nationalId" }
 (also "username / email / employeeId belongs to a deleted user",
  "barcode belongs to a deleted product")
 
 500 Internal server error (unexpected server problem only):
-{ "statusCode": 500, "message": "Internal server error" }
+{ "statusCode": 500, "message": "Internal server error", "error": "Internal Server Error", "code": "INTERNAL_ERROR", "field": null }
 
 
 Typical setup order (because of relations)
@@ -145,7 +182,9 @@ Typical setup order (because of relations)
 1. POST /auth/login                       -> token (data.access_token)
 2. POST /branch                           -> branchId
 3. POST /inventory/branch/:branchId       -> inventoryId (warehouse)
+                                             (list all: GET /inventory)
 4. POST /categories, POST /item-unit      -> categoryId, itemUnitId
 5. POST /products                         -> productId
-6. POST /prodcut-inventory/inventory/:inventoryId  (put stock in warehouse)
+6. POST /product-inventory/inventory/:inventoryId  (put stock in warehouse)
 7. POST /employees/branch/:branchId, POST /users, /customer, /supplier
+                                             (list all employees: GET /employees)

@@ -10,10 +10,11 @@ Authentication & access
 -----------------------
 All endpoints require:  Authorization: Bearer <access_token>   (see auth.txt)
 Only SUPERADMIN can call them:
-  - no / invalid token  -> 401 { "message": "Unauthorized", "statusCode": 401 }
-  - other roles         -> 403 { "message": "You do not have the required roles to access this resource", "error": "Forbidden", "statusCode": 403 }
+  - no / invalid token  -> 401 { "statusCode": 401, "message": "Unauthorized", "error": "Unauthorized", "code": "UNAUTHORIZED", "field": null }
+  - other roles         -> 403 { "statusCode": 403, "message": "You do not have the required roles to access this resource", "error": "Forbidden", "code": "FORBIDDEN", "field": null }
 
 Response shape: every success is { "message": "...", "data": ... }
+Every error has { statusCode, message, error, code, field } (see 00-overview.txt)
 Unknown fields in a body -> 400 "property <name> should not exist"
 Delete is a SOFT delete (record hidden, kept in the database).
 EXCEPTION: POST /users/login is public (no token, any role).
@@ -26,7 +27,7 @@ The password is NEVER returned by any endpoint.
 
 Role values (field "role")
 --------------------------
-    SUPERADMIN | ADMIN | ACCOUNTENT | SALES | USER
+    SUPERADMIN | ADMIN | ACCOUNTANT | SALES | USER
 
 User object (what "data" contains)
 ----------------------------------
@@ -76,13 +77,13 @@ Success Response (201):
 Error Cases:
 - Missing/invalid/unknown fields              -> 400 (validation error)
 - Duplicate username / email / employeeId of an ACTIVE user -> 409
-    { "statusCode": 409, "message": "username already exists", "error": "Conflict" }
+    { "statusCode": 409, "message": "username already exists", "error": "Conflict", "code": "ALREADY_EXISTS", "field": "username" }
     (message is "email already exists" / "employeeId already exists" accordingly)
 - username / email / employeeId of a DELETED user -> 409 (the user is NOT restored)
-    { "statusCode": 409, "message": "username belongs to a deleted user", "error": "Conflict" }
+    { "statusCode": 409, "message": "username belongs to a deleted user", "error": "Conflict", "code": "BELONGS_TO_DELETED", "field": "username" }
     (or "email belongs to a deleted user" / "employeeId belongs to a deleted user")
 - employeeId or branchId that does not exist  -> 400
-    { "statusCode": 400, "message": "branchId does not exist", "error": "Bad Request" }
+    { "statusCode": 400, "message": "branchId does not exist", "error": "Bad Request", "code": "DOES_NOT_EXIST", "field": "branchId" }
 
 
 ---------------------------------------------------------
@@ -115,7 +116,9 @@ Error Response (404 - not found or deleted):
 {
   "statusCode": 404,
   "message": "User with id cm4user123 not found",
-  "error": "Not Found"
+  "error": "Not Found",
+  "code": "NOT_FOUND",
+  "field": null
 }
 
 
@@ -198,9 +201,11 @@ Success Response (201):
 
 Error Response (401 - wrong username/password, or user is deleted):
 {
+  "statusCode": 401,
   "message": "Invalid credentials",
   "error": "Unauthorized",
-  "statusCode": 401
+  "code": "UNAUTHORIZED",
+  "field": null
 }
 
 

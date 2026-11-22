@@ -10,10 +10,11 @@ Authentication & access
 -----------------------
 All endpoints require:  Authorization: Bearer <access_token>   (see auth.txt)
 Only SUPERADMIN can call them:
-  - no / invalid token  -> 401 { "message": "Unauthorized", "statusCode": 401 }
-  - other roles         -> 403 { "message": "You do not have the required roles to access this resource", "error": "Forbidden", "statusCode": 403 }
+  - no / invalid token  -> 401 { "statusCode": 401, "message": "Unauthorized", "error": "Unauthorized", "code": "UNAUTHORIZED", "field": null }
+  - other roles         -> 403 { "statusCode": 403, "message": "You do not have the required roles to access this resource", "error": "Forbidden", "code": "FORBIDDEN", "field": null }
 
 Response shape: every success is { "message": "...", "data": ... }
+Every error has { statusCode, message, error, code, field } (see 00-overview.txt)
 Unknown fields in a body -> 400 "property <name> should not exist"
 Delete is a SOFT delete (record hidden, kept in the database).
 
@@ -22,7 +23,6 @@ A product-inventory record = the stock of ONE product inside ONE inventory
 inventory. Deleting it and adding the same product again RESTORES the old
 record (see Create).
 
-NOTE: the URL is spelled "prodcut-inventory" (this is the real path).
 NOTE: quantity / costPrice are sent as numbers but returned as strings, with
       up to 4 decimals (100.12345 is stored as "100.1235").
 
@@ -43,7 +43,7 @@ PRODUCT INVENTORY APIs
 
 1) Create Product Inventory Record
    Method: POST
-   URL: /prodcut-inventory/inventory/:inventoryId
+   URL: /product-inventory/inventory/:inventoryId
    Description: Puts a product into an inventory with a quantity and cost price.
                 If this product was in this inventory before and that record
                 was DELETED, the same record is restored (same id) with the new
@@ -60,7 +60,7 @@ PRODUCT INVENTORY APIs
    - inventoryId: optional, IGNORED (the one in the URL is used)
 
    Request Example:
-   POST /prodcut-inventory/inventory/cm4inventory789
+   POST /product-inventory/inventory/cm4inventory789
    {
      "productId": "cm4product123",
      "quantity": 100,
@@ -87,14 +87,14 @@ PRODUCT INVENTORY APIs
    }
 
    Error Responses:
-   - 404 { "statusCode": 404, "message": "Inventory not found", "error": "Not Found" }
-   - 404 { "statusCode": 404, "message": "Product not found", "error": "Not Found" }
-   - 400 { "statusCode": 400, "message": "Product inventory already exists", "error": "Bad Request" }
+   - 404 { "statusCode": 404, "message": "Inventory not found", "error": "Not Found", "code": "NOT_FOUND", "field": null }
+   - 404 { "statusCode": 404, "message": "Product not found", "error": "Not Found", "code": "NOT_FOUND", "field": null }
+   - 400 { "statusCode": 400, "message": "Product inventory already exists", "error": "Bad Request", "code": "ALREADY_EXISTS", "field": "productId" }
          (this product already has an ACTIVE record in this inventory -> use PATCH instead)
 
 2) Get All Products in an Inventory
    Method: GET
-   URL: /prodcut-inventory/inventory/:inventoryId
+   URL: /product-inventory/inventory/:inventoryId
    Description: All active stock records of an inventory (deleted products are
                 excluded), each with the full product + category + unit.
 
@@ -107,7 +107,7 @@ PRODUCT INVENTORY APIs
          "product": {
            ...product object (see products.txt),
            "category": { ...category object },
-           "primaryIteamUnit": { ...item unit object }
+           "primaryItemUnit": { ...item unit object }
          }
        }
      ]
@@ -117,12 +117,14 @@ PRODUCT INVENTORY APIs
    {
      "statusCode": 404,
      "message": "Inventory with id cm4inventory789 not found",
-     "error": "Not Found"
+     "error": "Not Found",
+     "code": "NOT_FOUND",
+     "field": null
    }
 
 3) Get Single Product Inventory Record
    Method: GET
-   URL: /prodcut-inventory/:id
+   URL: /product-inventory/:id
    Description: One stock record with the full product (+ category, unit) and
                 its inventory.
 
@@ -134,7 +136,7 @@ PRODUCT INVENTORY APIs
        "product": {
          ...product object,
          "category": { ...category object },
-         "primaryIteamUnit": { ...item unit object }
+         "primaryItemUnit": { ...item unit object }
        },
        "inventory": { ...inventory object (see inventory.txt) }
      }
@@ -144,12 +146,14 @@ PRODUCT INVENTORY APIs
    {
      "statusCode": 404,
      "message": "Product inventory with ID cm4prodinv123 not found",
-     "error": "Not Found"
+     "error": "Not Found",
+     "code": "NOT_FOUND",
+     "field": null
    }
 
 4) Update Product Inventory Record
    Method: PATCH
-   URL: /prodcut-inventory/:id
+   URL: /product-inventory/:id
    Description: Sets quantity and/or costPrice directly. Intended for MANUAL
                 CORRECTION (e.g. a wrong opening quantity or cost entered by
                 mistake). Only quantity and costPrice are changed.
@@ -177,7 +181,7 @@ PRODUCT INVENTORY APIs
 
 5) Delete Product Inventory Record
    Method: DELETE
-   URL: /prodcut-inventory/:id
+   URL: /product-inventory/:id
    Description: Soft delete (sets deletedAt).
 
    Response Example (200):
