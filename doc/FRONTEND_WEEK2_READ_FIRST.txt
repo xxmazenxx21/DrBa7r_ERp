@@ -5,8 +5,8 @@ FRONTEND - READ THIS FIRST (Week 2 backend changes)
 >>> below after every pull.
 
 Last update: Week 2 Tasks 1-7 (setup, numbering, currency, product units,
-stock, purchase quotations, purchase invoices) + "primary unit lock".
-convert-to-invoice is NOT in yet.
+stock, purchase quotations + convert-to-invoice, purchase invoices) +
+"primary unit lock".
 
 
 0. Get the new backend (IMPORTANT)
@@ -106,10 +106,14 @@ PART 1 - NEW IN WEEK 2 (what exists so far)
                                             REPLACES all lines)
     PATCH  /purchase-quotations/:id/status  DRAFT -> SENT -> ACCEPTED / REJECTED
     DELETE /purchase-quotations/:id         soft delete (not when CONVERTED)
+    POST   /purchase-quotations/:id/convert-to-invoice
+                                            ACCEPTED -> CONVERTED + a new DRAFT
+                                            purchase invoice with the same lines
+                                            (body: paymentType, invoiceDate,
+                                            warehouseId if the quotation has none)
   No effect on stock or money. The server computes every total: send only
   quantities, prices and percents. Example: 10 cartons x 150, discount 10%,
   tax 14% -> subTotal 1500, discountValue 150, taxValue 189, netTotal 1539.
-  convert-to-invoice (quotation -> invoice) comes right after purchase invoices.
 
 1.6b Purchase invoices (فواتير الشراء)  - doc/week2/purchase-invoices.txt
 -----------------------------------------------------------------------

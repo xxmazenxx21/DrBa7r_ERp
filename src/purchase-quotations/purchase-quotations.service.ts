@@ -24,6 +24,8 @@ import { UpdatePurchaseQuotationDto } from './dto/update-purchase-quotation.dto'
 import { UpdateQuotationStatusDto } from './dto/update-quotation-status.dto';
 import { PurchaseQuotationQueryDto } from './dto/purchase-quotation-query.dto';
 import { PurchaseQuotationLineDto } from './dto/purchase-quotation-line.dto';
+import { ConvertToInvoiceDto } from './dto/convert-to-invoice.dto';
+import { PurchaseInvoicesService } from '../purchase-invoices/purchase-invoices.service';
 
 const EDITABLE: QuotationStatus[] = [
   QuotationStatus.DRAFT,
@@ -72,6 +74,7 @@ export class PurchaseQuotationsService {
     private readonly prisma: PrismaService,
     private readonly numbering: NumberingService,
     private readonly productUnits: ProductUnitsService,
+    private readonly purchaseInvoices: PurchaseInvoicesService,
   ) {}
 
   private async getActive(id: string) {
@@ -370,5 +373,51 @@ export class PurchaseQuotationsService {
       'Purchase quotation status updated successfully',
       await this.getDetail(id),
     );
+  }
+
+  /**
+   * POST /purchase-quotations/:id/convert-to-invoice
+   * An ACCEPTED quotation becomes a DRAFT purchase invoice with the same
+   * supplier, branch, lines, discounts and tax. In ONE transaction:
+   *  1. ACCEPTED -> CONVERTED with a conditional update (not ACCEPTED, or
+   *     converted already -> 409 INVALID_STATUS; two clicks can't make two
+   *     invoices),
+   *  2. PurchaseInvoicesService.createFromQuotation creates the invoice
+   *     (same tx: if it fails, the quotation stays ACCEPTED),
+   *  3. convertedToInvoiceId = the new invoice.
+   * Returns both: the quotation (CONVERTED) and the new invoice (DRAFT).
+   */
+  async convertToInvoice(id: string, dto: ConvertToInvoiceDto, userId: string) {
+    const invoice = await this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.purchaseQuotation.updateMany({
+        where: { id, deletedAt: null, status: QuotationStatus.ACCEPTED },
+        data: { status: QuotationStatus.CONVERTED, modifiedBy: userId },
+      });
+      if (claimed.count === 0) {
+        const current = await this.getActive(id); // 404 if missing
+        throw invalidStatus(
+          `This quotation is ${current.status}: only an ACCEPTED quotation can be converted to an invoice`,
+        );
+      }
+      const quotation = await tx.purchaseQuotation.findUniqueOrThrow({
+        where: { id },
+        include: { lines: { orderBy: { id: 'asc' } } },
+      });
+      const created = await this.purchaseInvoices.createFromQuotation(
+        tx,
+        quotation,
+        dto,
+        userId,
+      );
+      await tx.purchaseQuotation.update({
+        where: { id },
+        data: { convertedToInvoiceId: created.id },
+      });
+      return created;
+    });
+    return ok('Purchase quotation converted to invoice successfully', {
+      quotation: await this.getDetail(id),
+      invoice: (await this.purchaseInvoices.findOne(invoice.id)).data,
+    });
   }
 }

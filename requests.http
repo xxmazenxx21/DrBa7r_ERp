@@ -463,6 +463,17 @@ Authorization: Bearer {{token}}
   "status": "ACCEPTED"
 }
 
+### Convert the ACCEPTED quotation into a DRAFT purchase invoice (quotation -> CONVERTED)
+# warehouseId: only needed when the quotation has none
+POST {{baseUrl}}/purchase-quotations/{{createQuotation.response.body.data.id}}/convert-to-invoice
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "paymentType": "CREDIT",
+  "invoiceDate": "2026-11-25"
+}
+
 ### ---------- Purchase invoices (Task 7) ----------
 
 ### Invoice: 10 cartons x 150, discount 10%, tax 14%, CREDIT paid 500

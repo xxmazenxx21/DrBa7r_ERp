@@ -13,6 +13,7 @@ import { CreatePurchaseQuotationDto } from './dto/create-purchase-quotation.dto'
 import { UpdatePurchaseQuotationDto } from './dto/update-purchase-quotation.dto';
 import { UpdateQuotationStatusDto } from './dto/update-quotation-status.dto';
 import { PurchaseQuotationQueryDto } from './dto/purchase-quotation-query.dto';
+import { ConvertToInvoiceDto } from './dto/convert-to-invoice.dto';
 import { Roles } from '../decorators/roles.decorator';
 import { CurrentUser } from '../decorators/current-user.decorator';
 import { Role } from '../utils/enum/enum';
@@ -42,6 +43,16 @@ export class PurchaseQuotationsController {
   @Roles(Role.SUPERADMIN)
   findOne(@Param('id') id: string) {
     return this.purchaseQuotationsService.findOne(id);
+  }
+
+  @Post(':id/convert-to-invoice')
+  @Roles(Role.SUPERADMIN)
+  convertToInvoice(
+    @Param('id') id: string,
+    @Body() dto: ConvertToInvoiceDto,
+    @CurrentUser('sub') userId: string,
+  ) {
+    return this.purchaseQuotationsService.convertToInvoice(id, dto, userId);
   }
 
   @Patch(':id/status')

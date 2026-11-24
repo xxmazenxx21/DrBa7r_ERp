@@ -29,7 +29,7 @@ A quotation has NO effect on stock or money. It is a document with a header
   - Status (الحالة):
         DRAFT (مسودة) --> SENT (مُرسل) --> ACCEPTED (مقبول)
                                       \-> REJECTED (مرفوض)
-        ACCEPTED --> CONVERTED (تم التحويل لفاتورة)   (convert-to-invoice, coming with purchase invoices)
+        ACCEPTED --> CONVERTED (تم التحويل لفاتورة)   (POST /purchase-quotations/:id/convert-to-invoice)
     Only these moves are allowed; anything else -> 409 INVALID_STATUS.
   - Editing is allowed only while DRAFT or SENT.
 
@@ -244,9 +244,51 @@ PURCHASE QUOTATION APIs
    Response (200): { "message": "Purchase quotation deleted successfully", "data": null }
    Error (409): { "statusCode": 409, "message": "A CONVERTED quotation can't be deleted", "error": "Conflict", "code": "INVALID_STATUS", "field": "status" }
 
-7) Convert to invoice
-   POST /purchase-quotations/:id/convert-to-invoice  - comes with purchase
-   invoices (next task). Not available yet (404).
+7) Convert to invoice (تحويل لفاتورة)
+   Method: POST
+   URL: /purchase-quotations/:id/convert-to-invoice
+   Description: An ACCEPTED quotation becomes a DRAFT purchase invoice
+                (doc/week2/purchase-invoices.txt) with the same supplier,
+                branch, lines (unitPrice -> unitCost), discounts and tax, in
+                the DEFAULT currency (rate 1). The quotation becomes CONVERTED
+                and convertedToInvoiceId points to the invoice; the invoice has
+                "convertedFromQuotation": { "id", "code" }. All or nothing: if
+                it fails, the quotation stays ACCEPTED and no invoice is made.
+                Clicking twice can't make two invoices (the second gets 409).
+                The invoice is a normal DRAFT: edit it (payment, expiry dates,
+                supplier invoice number...) and then post it.
+
+   Body:
+   - paymentType: required, CASH (paid = net) or CREDIT (paid 0)
+   - invoiceDate: required, "2026-11-25"
+   - warehouseId: optional; the quotation's warehouse is used if not sent;
+                  REQUIRED when the quotation has none. Must belong to the branch.
+
+   Request Example:
+   POST /purchase-quotations/cmx1pq0001/convert-to-invoice
+   { "paymentType": "CREDIT", "invoiceDate": "2026-11-25" }
+
+   Response Example (201):
+   {
+     "message": "Purchase quotation converted to invoice successfully",
+     "data": {
+       "quotation": { ...quotation object, "status": "CONVERTED", "convertedToInvoiceId": "cmx1pi0007" },
+       "invoice":   { ...invoice object (see purchase-invoices.txt), "status": "DRAFT", "code": "PI-2026-000007",
+                      "convertedFromQuotation": { "id": "cmx1pq0001", "code": "PQ-2026-000001" } }
+     }
+   }
+
+   Errors:
+   - 409 not ACCEPTED (or converted already)
+     { "statusCode": 409, "message": "This quotation is CONVERTED: only an ACCEPTED quotation can be converted to an invoice", "error": "Conflict", "code": "INVALID_STATUS", "field": "status" }
+   - 400 no warehouse anywhere
+     { "statusCode": 400, "message": ["warehouseId is required: the quotation has no warehouse"], "error": "Bad Request", "code": "VALIDATION_FAILED", "field": "warehouseId" }
+   - 400 a line's product was deleted / its unit is no longer defined
+     { "statusCode": 400, "message": "productId does not exist", "error": "Bad Request", "code": "DOES_NOT_EXIST", "field": "lines.1.productId" }
+   - 400 no default currency, warehouse of another branch: same bodies as
+     POST /purchase-invoices
+   Products with hasExpiryDate: the conversion works without expiry dates,
+   but POSTING the invoice asks for them (edit the draft's lines first).
 
 Suggested Arabic messages
 -------------------------
