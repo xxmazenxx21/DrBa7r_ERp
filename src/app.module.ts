@@ -18,6 +18,8 @@ import { NumberingModule } from './numbering/numbering.module';
 import { CurrencyModule } from './currency/currency.module';
 import { ProductUnitsModule } from './product-units/product-units.module';
 import { StockModule } from './stock/stock.module';
+import { PurchaseQuotationsModule } from './purchase-quotations/purchase-quotations.module';
+import { PurchaseInvoicesModule } from './purchase-invoices/purchase-invoices.module';
 import { JwtModule } from '@nestjs/jwt';
 import { APP_GUARD } from '@nestjs/core';
 import { AuthGuard } from './guards/auth.guard';
@@ -51,6 +53,8 @@ import { RolesGuard } from './guards/roles.guard';
     CurrencyModule,
     ProductUnitsModule,
     StockModule,
+    PurchaseQuotationsModule,
+    PurchaseInvoicesModule,
   ],
   controllers: [AppController],
   providers: [

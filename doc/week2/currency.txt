@@ -185,6 +185,8 @@ CURRENCY APIs
        "code": "BAD_REQUEST",
        "field": "isDefault"
      }
+   - 400 used by purchase invoices (any not-deleted invoice, any status)
+     { "statusCode": 400, "message": "Currency is used by 3 purchase invoice(s) and cannot be deleted", "error": "Bad Request", "code": "BAD_REQUEST", "field": null }
 
 Suggested Arabic messages
 -------------------------
@@ -193,6 +195,7 @@ Suggested Arabic messages
   VALIDATION_FAILED + field code          كود العملة 3 حروف إنجليزية كبيرة (مثل EGP)
   ALREADY_EXISTS + field code             كود العملة مستخدم بالفعل
   BELONGS_TO_DELETED + field code         كود العملة مرتبط بعملة محذوفة
+  BAD_REQUEST (used by invoices)          لا يمكن حذف العملة لأنها مستخدمة في فواتير شراء
 
 Suggested UI: in the list, show a "أساسية" badge on the default currency and
 hide its delete button; "make default" is a button on the other rows.

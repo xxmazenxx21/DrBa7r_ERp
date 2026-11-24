@@ -1,0 +1,302 @@
+Purchase Quotations API Documentation (عروض أسعار الشراء)
+=========================================================
+
+Base URL
+--------
+http://localhost:3000   (the backend runs on your machine with Docker, see README.md)
+
+Authentication & access
+-----------------------
+All endpoints require:  Authorization: Bearer <access_token>   (see doc/week1/auth.txt)
+Only SUPERADMIN can call them:
+  - no / invalid token  -> 401 { "statusCode": 401, "message": "Unauthorized", "error": "Unauthorized", "code": "UNAUTHORIZED", "field": null }
+  - other roles         -> 403 { "statusCode": 403, "message": "You do not have the required roles to access this resource", "error": "Forbidden", "code": "FORBIDDEN", "field": null }
+
+Response shape: every success is { "message": "...", "data": ... }
+Every error has { statusCode, message, error, code, field } (see doc/week1/00-overview.txt)
+Unknown fields (also inside lines) -> 400 "property <name> should not exist"
+Delete is a SOFT delete. Numbers are SENT as numbers and RETURNED as strings.
+
+What is it?
+-----------
+A supplier sends you his prices; you save them to compare suppliers.
+A quotation has NO effect on stock or money. It is a document with a header
+(الرأس: supplier, date, totals) and lines (البنود: one per product).
+
+  - The server gives the number: PQ-2026-000001 (see doc/week2/numbering.txt).
+  - The server computes EVERY total. You send quantities, prices and percents
+    only (see "Totals" in doc/week2/00-overview.txt).
+  - Status (الحالة):
+        DRAFT (مسودة) --> SENT (مُرسل) --> ACCEPTED (مقبول)
+                                      \-> REJECTED (مرفوض)
+        ACCEPTED --> CONVERTED (تم التحويل لفاتورة)   (POST /purchase-quotations/:id/convert-to-invoice)
+    Only these moves are allowed; anything else -> 409 INVALID_STATUS.
+  - Editing is allowed only while DRAFT or SENT.
+
+Header fields (Arabic label = what the screen shows)
+----------------------------------------------------
+  field                 Arabic           who      notes
+  --------------------  ---------------  -------  ---------------------------------------------
+  id                    -                server
+  code                  رقم العرض         server   PQ-2026-000001 (year = quotationDate's year)
+  quotationDate         تاريخ العرض       user     "2026-11-20" (required)
+  validUntil            صالح حتى          user     optional, >= quotationDate; null clears
+  status                الحالة            server   DRAFT at creation (change it with /status)
+  supplierId            المورد            user     an active supplier
+  branchId              الفرع             user     an active branch
+  warehouseId           المخزن            user     optional, must belong to branchId; null clears
+  subTotal              الإجمالي          server
+  discountPercent       نسبة الخصم %      user     optional, 0-100, max 2 decimals
+  discountValue         قيمة الخصم        server   (or yours, if you send no discountPercent)
+  taxPercent            نسبة الضريبة %    user     optional, 0-100 (e.g. 14)
+  taxValue              قيمة الضريبة      server
+  netTotal              الصافي            server
+  convertedToInvoiceId  الفاتورة الناتجة   server   set when the quotation becomes an invoice
+  notes                 ملاحظات           user     optional, max 500; null clears
+  createdBy / createdDate      أنشأه / تاريخ الإنشاء   server (the logged-in user)
+  modifiedBy / modifiedDate    عدّله / تاريخ التعديل   server
+  isExpired             منتهي الصلاحية    server   true when validUntil has passed (read only)
+
+Line fields (البنود)
+-------------------
+  field            Arabic            who      notes
+  ---------------  ----------------  -------  ---------------------------------------------
+  productId        الصنف              user     an active product (SERVICE products are allowed)
+  itemUnitId       الوحدة             user     the product's primary unit or one of its units
+                                              (GET /products/:productId/units)
+  unitFactor       معامل الوحدة        server   pieces in one itemUnitId (carton = 12), saved as
+                                              it was at that moment
+  quantity         الكمية             user     > 0, max 4 decimals, in itemUnitId
+  unitPrice        سعر الوحدة          user     >= 0, max 4 decimals, price of ONE itemUnitId
+  discountPercent  نسبة خصم البند %    user     optional, 0-100   } send ONE of them,
+  discountValue    قيمة خصم البند      user     optional, >= 0    } not both
+  lineTotal        إجمالي البند        server   quantity x unitPrice - line discount
+  notes            ملاحظات            user     optional, max 250
+
+Totals (the example from the task)
+----------------------------------
+  10 cartons x 150, discount 10%, tax 14%:
+    lineTotal 1500 -> subTotal 1500, discountValue 150, taxValue 189, netTotal 1539
+  Header discount: a discountPercent above 0 wins; otherwise discountValue
+  (a fixed amount) is used. To switch from a percent to a fixed discount send
+  "discountPercent": 0 with "discountValue", or only "discountValue".
+
+Quotation object (create / update / get one / status)
+-----------------------------------------------------
+{
+  "id": "cmx1pq0001",
+  "code": "PQ-2026-000001",
+  "quotationDate": "2026-11-20T00:00:00.000Z",
+  "validUntil": "2026-12-31T00:00:00.000Z",
+  "status": "DRAFT",
+  "supplierId": "cmx1sup01",
+  "branchId": "cmx1branch01",
+  "warehouseId": "cmx1inv01",
+  "subTotal": "1500",
+  "discountPercent": "10",
+  "discountValue": "150",
+  "taxPercent": "14",
+  "taxValue": "189",
+  "netTotal": "1539",
+  "convertedToInvoiceId": null,
+  "notes": "عرض النيل",
+  "createdBy": "cmx1user01",
+  "createdDate": "2026-11-24T10:00:00.000Z",
+  "modifiedBy": null,
+  "modifiedDate": "2026-11-24T10:00:00.000Z",
+  "deletedAt": null,
+  "supplier": { "id": "cmx1sup01", "code": "SUP-123456", "name": "النيل" },
+  "branch": { "id": "cmx1branch01", "code": "branch-123456", "name": "فرع المعادي" },
+  "warehouse": { "id": "cmx1inv01", "name": "مخزن المعادي" },
+  "createdByUser": { "id": "cmx1user01", "username": "admin" },
+  "modifiedByUser": null,
+  "lines": [
+    {
+      "id": "cmx1pql01",
+      "purchaseQuotationId": "cmx1pq0001",
+      "productId": "cmx1prod01",
+      "itemUnitId": "cmx1unitcarton",
+      "unitFactor": "12",
+      "quantity": "10",
+      "unitPrice": "150",
+      "discountPercent": null,
+      "discountValue": null,
+      "lineTotal": "1500",
+      "notes": null,
+      "product": { "id": "cmx1prod01", "code": "PRD-123456", "name": "فرشة", "itemType": "STOCK" },
+      "itemUnit": { "id": "cmx1unitcarton", "code": "unit-482913", "name": "كرتونة" }
+    }
+  ],
+  "isExpired": false
+}
+Dates are returned as "YYYY-MM-DDT00:00:00.000Z": use the first 10 characters.
+
+---------------------------------------------------------
+PURCHASE QUOTATION APIs
+---------------------------------------------------------
+
+1) Create
+   Method: POST
+   URL: /purchase-quotations
+
+   Request Example:
+   {
+     "quotationDate": "2026-11-20",
+     "validUntil": "2026-12-31",
+     "supplierId": "cmx1sup01",
+     "branchId": "cmx1branch01",
+     "warehouseId": "cmx1inv01",
+     "discountPercent": 10,
+     "taxPercent": 14,
+     "notes": "عرض النيل",
+     "lines": [
+       { "productId": "cmx1prod01", "itemUnitId": "cmx1unitcarton", "quantity": 10, "unitPrice": 150 }
+     ]
+   }
+
+   Response Example (201):
+   { "message": "Purchase quotation created successfully", "data": { ...quotation object, "status": "DRAFT" } }
+
+   Error Responses:
+   - 400 no lines
+     { "statusCode": 400, "message": ["lines must contain at least 1 elements"], "error": "Bad Request", "code": "VALIDATION_FAILED", "field": "lines" }
+   - 400 a line field is invalid: "field" is the PATH of the line field
+     { "statusCode": 400, "message": ["lines.1.quantity must be a positive number"], "error": "Bad Request", "code": "VALIDATION_FAILED", "field": "lines.1.quantity" }
+   - 400 both line discounts
+     { "statusCode": 400, "message": ["lines.1: send discountPercent or discountValue, not both"], "error": "Bad Request", "code": "VALIDATION_FAILED", "field": "lines.1.discountValue" }
+   - 400 a line's unit is not one of the product's units
+     { "statusCode": 400, "message": "unit is not defined for this product", "error": "Bad Request", "code": "BAD_REQUEST", "field": "lines.1.itemUnitId" }
+   - 400 a line's product missing or deleted
+     { "statusCode": 400, "message": "productId does not exist", "error": "Bad Request", "code": "DOES_NOT_EXIST", "field": "lines.0.productId" }
+   - 400 a discount bigger than the amount (line or header)
+     { "statusCode": 400, "message": "discountValue must be between 0 and the amount it is taken from", "error": "Bad Request", "code": "BAD_REQUEST", "field": "lines.0.discountValue" }
+   - 400 supplierId / branchId missing or deleted
+     { "statusCode": 400, "message": "supplierId does not exist", "error": "Bad Request", "code": "DOES_NOT_EXIST", "field": "supplierId" }
+   - 400 warehouse of another branch
+     { "statusCode": 400, "message": "warehouseId must belong to branchId", "error": "Bad Request", "code": "BAD_REQUEST", "field": "warehouseId" }
+   - 400 validUntil before quotationDate
+     { "statusCode": 400, "message": "validUntil must be on or after quotationDate", "error": "Bad Request", "code": "BAD_REQUEST", "field": "validUntil" }
+   - 400 sending code / status / totals (subTotal, netTotal...) -> "property X should not exist"
+
+2) List
+   Method: GET
+   URL: /purchase-quotations
+   Description: PAGINATED (see doc/week2/00-overview.txt), newest quotationDate
+                first. Each item = the header + supplier / branch / warehouse
+                + "_count": { "lines": 3 } + isExpired. NO lines (open one
+                quotation to see them).
+   Query (all optional): supplierId, branchId, status, dateFrom, dateTo
+   (quotationDate, inclusive), search (part of the code, the supplier name or
+   the notes, any case), page, pageSize.
+
+   Request Example:
+   GET /purchase-quotations?status=SENT&search=النيل&page=1&pageSize=20
+
+   Response Example (200):
+   {
+     "message": "Purchase quotations returned successfully",
+     "data": {
+       "items": [ { ...header, "supplier": {...}, "branch": {...}, "warehouse": null, "_count": { "lines": 1 }, "isExpired": false } ],
+       "meta": { "page": 1, "pageSize": 20, "total": 1, "totalPages": 1 }
+     }
+   }
+
+3) Get one
+   Method: GET
+   URL: /purchase-quotations/:id
+   Response (200): { "message": "Purchase quotation returned successfully", "data": { ...quotation object } }
+   Error (404): { "statusCode": 404, "message": "Purchase quotation with id xxx not found", "error": "Not Found", "code": "NOT_FOUND", "field": null }
+
+4) Update
+   Method: PATCH
+   URL: /purchase-quotations/:id
+   Description: Only while DRAFT or SENT. Any field from Create, all optional.
+                "lines", when sent, REPLACES ALL the lines (send the full list).
+                Not sent = the lines stay. Totals are always computed again.
+                null clears validUntil / warehouseId / notes; null on other
+                fields -> 400.
+
+   Request Example:
+   { "discountValue": 100, "lines": [ { "productId": "...", "itemUnitId": "...", "quantity": 12, "unitPrice": 145 } ] }
+
+   Response (200): { "message": "Purchase quotation updated successfully", "data": { ...quotation object } }
+   Errors: same as Create, plus
+   - 409 not DRAFT / SENT
+     { "statusCode": 409, "message": "This quotation is ACCEPTED: only DRAFT or SENT quotations can be edited", "error": "Conflict", "code": "INVALID_STATUS", "field": "status" }
+
+5) Change status
+   Method: PATCH
+   URL: /purchase-quotations/:id/status
+   Body: { "status": "SENT" }   (one of SENT, ACCEPTED, REJECTED)
+   Allowed: DRAFT -> SENT, SENT -> ACCEPTED, SENT -> REJECTED.
+
+   Response (200): { "message": "Purchase quotation status updated successfully", "data": { ...quotation object } }
+   Errors:
+   - 409 move not allowed
+     { "statusCode": 409, "message": "Can't change status from DRAFT to ACCEPTED (allowed: DRAFT -> SENT, SENT -> ACCEPTED or REJECTED)", "error": "Conflict", "code": "INVALID_STATUS", "field": "status" }
+   - 400 another value (DRAFT, CONVERTED...)
+     { "statusCode": 400, "message": ["status must be one of the following values: SENT, ACCEPTED, REJECTED"], "error": "Bad Request", "code": "VALIDATION_FAILED", "field": "status" }
+
+6) Delete
+   Method: DELETE
+   URL: /purchase-quotations/:id
+   Description: Soft delete, any status EXCEPT CONVERTED.
+   Response (200): { "message": "Purchase quotation deleted successfully", "data": null }
+   Error (409): { "statusCode": 409, "message": "A CONVERTED quotation can't be deleted", "error": "Conflict", "code": "INVALID_STATUS", "field": "status" }
+
+7) Convert to invoice (تحويل لفاتورة)
+   Method: POST
+   URL: /purchase-quotations/:id/convert-to-invoice
+   Description: An ACCEPTED quotation becomes a DRAFT purchase invoice
+                (doc/week2/purchase-invoices.txt) with the same supplier,
+                branch, lines (unitPrice -> unitCost), discounts and tax, in
+                the DEFAULT currency (rate 1). The quotation becomes CONVERTED
+                and convertedToInvoiceId points to the invoice; the invoice has
+                "convertedFromQuotation": { "id", "code" }. All or nothing: if
+                it fails, the quotation stays ACCEPTED and no invoice is made.
+                Clicking twice can't make two invoices (the second gets 409).
+                The invoice is a normal DRAFT: edit it (payment, expiry dates,
+                supplier invoice number...) and then post it.
+
+   Body:
+   - paymentType: required, CASH (paid = net) or CREDIT (paid 0)
+   - invoiceDate: required, "2026-11-25"
+   - warehouseId: optional; the quotation's warehouse is used if not sent;
+                  REQUIRED when the quotation has none. Must belong to the branch.
+
+   Request Example:
+   POST /purchase-quotations/cmx1pq0001/convert-to-invoice
+   { "paymentType": "CREDIT", "invoiceDate": "2026-11-25" }
+
+   Response Example (201):
+   {
+     "message": "Purchase quotation converted to invoice successfully",
+     "data": {
+       "quotation": { ...quotation object, "status": "CONVERTED", "convertedToInvoiceId": "cmx1pi0007" },
+       "invoice":   { ...invoice object (see purchase-invoices.txt), "status": "DRAFT", "code": "PI-2026-000007",
+                      "convertedFromQuotation": { "id": "cmx1pq0001", "code": "PQ-2026-000001" } }
+     }
+   }
+
+   Errors:
+   - 409 not ACCEPTED (or converted already)
+     { "statusCode": 409, "message": "This quotation is CONVERTED: only an ACCEPTED quotation can be converted to an invoice", "error": "Conflict", "code": "INVALID_STATUS", "field": "status" }
+   - 400 no warehouse anywhere
+     { "statusCode": 400, "message": ["warehouseId is required: the quotation has no warehouse"], "error": "Bad Request", "code": "VALIDATION_FAILED", "field": "warehouseId" }
+   - 400 a line's product was deleted / its unit is no longer defined
+     { "statusCode": 400, "message": "productId does not exist", "error": "Bad Request", "code": "DOES_NOT_EXIST", "field": "lines.1.productId" }
+   - 400 no default currency, warehouse of another branch: same bodies as
+     POST /purchase-invoices
+   Products with hasExpiryDate: the conversion works without expiry dates,
+   but POSTING the invoice asks for them (edit the draft's lines first).
+
+Suggested Arabic messages
+-------------------------
+  INVALID_STATUS                              لا يمكن تنفيذ العملية في حالة المستند الحالية
+  VALIDATION_FAILED + lines                   يجب إضافة بند واحد على الأقل
+  VALIDATION_FAILED + lines.N.discountValue   أدخل نسبة الخصم أو قيمة الخصم فقط، وليس الاثنين
+  BAD_REQUEST + lines.N.itemUnitId            هذه الوحدة غير معرفة لهذا الصنف
+  BAD_REQUEST + warehouseId                   المخزن يجب أن يكون تابعًا لنفس الفرع
+  BAD_REQUEST + validUntil                    تاريخ الصلاحية يجب أن يكون بعد تاريخ العرض
+  BAD_REQUEST + discountValue                 قيمة الخصم أكبر من المبلغ
+Use "lines.N" in "field" to highlight the wrong line (N starts at 0).

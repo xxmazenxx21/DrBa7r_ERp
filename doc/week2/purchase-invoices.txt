@@ -1,0 +1,346 @@
+Purchase Invoices API Documentation (فواتير الشراء)
+==================================================
+
+Base URL
+--------
+http://localhost:3000   (the backend runs on your machine with Docker, see README.md)
+
+Authentication & access
+-----------------------
+All endpoints require:  Authorization: Bearer <access_token>   (see doc/week1/auth.txt)
+Only SUPERADMIN can call them:
+  - no / invalid token  -> 401 { "statusCode": 401, "message": "Unauthorized", "error": "Unauthorized", "code": "UNAUTHORIZED", "field": null }
+  - other roles         -> 403 { "statusCode": 403, "message": "You do not have the required roles to access this resource", "error": "Forbidden", "code": "FORBIDDEN", "field": null }
+
+Response shape: every success is { "message": "...", "data": ... }
+Every error has { statusCode, message, error, code, field } (see doc/week1/00-overview.txt)
+Unknown fields (also inside lines) -> 400 "property <name> should not exist"
+Numbers are SENT as numbers and RETURNED as strings. Dates are returned as
+"YYYY-MM-DDT00:00:00.000Z": use the first 10 characters.
+
+What is it?
+-----------
+Goods that came from a supplier. Same shape as a purchase quotation (header +
+lines, the server computes every total) plus:
+  - payment: CASH (نقدي) or CREDIT (آجل), paid / remaining amounts
+  - POST (ترحيل): the stock goes UP (and the average cost changes)
+  - CANCEL (إلغاء): the stock goes DOWN again
+
+  Status (الحالة):
+      DRAFT (مسودة) --post--> POSTED (مُرحّل) --cancel--> CANCELLED (ملغي)
+  - DRAFT: no effect yet. Can be edited and deleted.
+  - POSTED: final. Can NOT be edited or deleted, only cancelled.
+  - CANCELLED: the stock was taken out again. The invoice stays (read only).
+  Any other action -> 409 INVALID_STATUS.
+
+The example (from the task)
+---------------------------
+  The warehouse has 100 brushes at 10 each.
+  Invoice: 10 cartons (12 brushes each) x 150, discount 10%, tax 14%, CREDIT,
+  paid 500:
+     subTotal 1500, discountValue 150, taxValue 189, netTotal 1539,
+     paidAmount 500, remainingAmount 1039
+  POST -> +120 brushes at 11.25 each -> the warehouse has 220, average 10.6818
+  POST again -> 409 INVALID_STATUS
+
+How the server computes the stock cost (when posting)
+-----------------------------------------------------
+  cost of ONE piece = lineTotal x (1 - discountValue / subTotal)
+                      x exchangeRate / baseQuantity
+  = the line's share of the document discount, in the default currency, per
+  piece. Tax is NOT part of the cost.
+  Example: 1500 x (1 - 150/1500) x 1 / 120 = 11.25   (saved as stockUnitCost)
+  SERVICE products have no stock: their lines are skipped (stockUnitCost 0).
+
+Payment rules
+-------------
+  CASH   -> paidAmount = netTotal (whatever you send), remainingAmount = 0
+  CREDIT -> paidAmount 0 .. netTotal (default 0), remainingAmount = netTotal - paidAmount
+  Changing CASH -> CREDIT without sending paidAmount sets paidAmount to 0.
+
+Currency rules
+--------------
+  currencyId not sent        -> the DEFAULT currency, exchangeRate 1
+                                (no default currency -> 400, create one in /currency)
+  the default currency       -> exchangeRate is 1 (another value -> 400)
+  another currency (USD...)  -> exchangeRate is REQUIRED (> 0, max 4 decimals),
+                                e.g. 48.5 = one dollar is 48.5 pounds
+  All amounts of the invoice are in its currency; the stock cost is converted
+  to the default currency with exchangeRate.
+
+Header fields (Arabic label = what the screen shows)
+----------------------------------------------------
+  field                  Arabic              who               notes
+  ---------------------  ------------------  ----------------  ----------------------------------------
+  id                     -                   server
+  code                   رقم الفاتورة          server            PI-2026-000001 (year = invoiceDate's year)
+  supplierInvoiceNumber  رقم فاتورة المورد    user, optional    written on the supplier's paper; null clears
+  invoiceDate            تاريخ الفاتورة       user              "2026-11-24" (required)
+  dueDate                تاريخ الاستحقاق      user, optional    >= invoiceDate (for CREDIT); null clears
+  status                 الحالة              server            DRAFT / POSTED / CANCELLED
+  paymentType            طريقة الدفع          user              CASH / CREDIT (required)
+  supplierId             المورد              user              an active supplier
+  branchId               الفرع               user              an active branch
+  warehouseId            المخزن              user              REQUIRED, must belong to branchId
+  currencyId             العملة              user, optional    not sent = the default currency
+  exchangeRate           سعر الصرف           server / user     see Currency rules
+  subTotal               الإجمالي            server
+  discountPercent        نسبة الخصم %        user, optional    0-100; above 0 it wins over discountValue
+  discountValue          قيمة الخصم          server            (or yours, if you send no discountPercent)
+  taxPercent             نسبة الضريبة %      user, optional    0-100 (e.g. 14)
+  taxValue               قيمة الضريبة        server
+  netTotal               الصافي              server
+  paidAmount             المدفوع             user, optional    see Payment rules (max 2 decimals)
+  remainingAmount        المتبقي             server            netTotal - paidAmount
+  postedDate / postedBy          تاريخ الترحيل / رحّلها    server (at posting)
+  cancelledDate / cancelledBy    تاريخ الإلغاء / ألغاها    server (at cancelling)
+  notes                  ملاحظات             user, optional    max 500; null clears
+  createdBy / createdDate / modifiedBy / modifiedDate   أنشأها / عدّلها   server
+
+Line fields (البنود)
+-------------------
+  field            Arabic                 who               notes
+  ---------------  ---------------------  ----------------  ------------------------------------------
+  productId        الصنف                   user              an active product (SERVICE allowed)
+  itemUnitId       الوحدة                  user              the purchase unit: the primary unit or one
+                                                            of GET /products/:productId/units
+  unitFactor       معامل الوحدة             server            pieces in one itemUnitId (carton = 12)
+  quantity         الكمية                  user              in itemUnitId (10 cartons); > 0, max 4 decimals
+  baseQuantity     الكمية بالقطعة           server            quantity x unitFactor (120)
+  unitCost         سعر شراء الوحدة          user              cost of ONE itemUnitId (150 a carton), >= 0
+  discountPercent  نسبة خصم البند %         user, optional    } send ONE of them, not both
+  discountValue    قيمة خصم البند           user, optional    }
+  lineTotal        إجمالي البند             server            quantity x unitCost - line discount
+  stockUnitCost    تكلفة القطعة في المخزن    server            set when POSTED (11.25), 0 before
+  batchNumber      رقم التشغيلة             user, optional    max 50
+  expiryDate       تاريخ الصلاحية           user              "2027-01-31"; REQUIRED if the product has
+                                                            hasExpiryDate = true
+  notes            ملاحظات                 user, optional    max 250
+
+Invoice object (create / update / get one / post / cancel)
+---------------------------------------------------------
+{
+  "id": "cmx1pi0001",
+  "code": "PI-2026-000001",
+  "supplierInvoiceNumber": "NILE-778",
+  "invoiceDate": "2026-11-24T00:00:00.000Z",
+  "dueDate": "2026-12-24T00:00:00.000Z",
+  "status": "POSTED",
+  "paymentType": "CREDIT",
+  "supplierId": "cmx1sup01",
+  "branchId": "cmx1branch01",
+  "warehouseId": "cmx1inv01",
+  "currencyId": "cmx1egp",
+  "exchangeRate": "1",
+  "subTotal": "1500",
+  "discountPercent": "10",
+  "discountValue": "150",
+  "taxPercent": "14",
+  "taxValue": "189",
+  "netTotal": "1539",
+  "paidAmount": "500",
+  "remainingAmount": "1039",
+  "postedDate": "2026-11-24T10:05:00.000Z",
+  "postedBy": "cmx1user01",
+  "cancelledDate": null,
+  "cancelledBy": null,
+  "notes": "فاتورة النيل",
+  "createdBy": "cmx1user01",
+  "createdDate": "2026-11-24T10:00:00.000Z",
+  "modifiedBy": null,
+  "modifiedDate": "2026-11-24T10:05:00.000Z",
+  "deletedAt": null,
+  "supplier": { "id": "cmx1sup01", "code": "SUP-123456", "name": "النيل" },
+  "branch": { "id": "cmx1branch01", "code": "branch-123456", "name": "فرع المعادي" },
+  "warehouse": { "id": "cmx1inv01", "name": "مخزن المعادي" },
+  "currency": { "id": "cmx1egp", "code": "EGP", "name": "جنيه مصري", "symbol": "ج.م" },
+  "createdByUser": { "id": "cmx1user01", "username": "admin" },
+  "modifiedByUser": null,
+  "postedByUser": { "id": "cmx1user01", "username": "admin" },
+  "cancelledByUser": null,
+  "convertedFromQuotation": null,          <-- { "id", "code" } when it came from a quotation
+  "lines": [
+    {
+      "id": "cmx1pil01",
+      "purchaseInvoiceId": "cmx1pi0001",
+      "productId": "cmx1prod01",
+      "itemUnitId": "cmx1unitcarton",
+      "unitFactor": "12",
+      "quantity": "10",
+      "baseQuantity": "120",
+      "unitCost": "150",
+      "discountPercent": null,
+      "discountValue": null,
+      "lineTotal": "1500",
+      "stockUnitCost": "11.25",
+      "batchNumber": null,
+      "expiryDate": null,
+      "notes": null,
+      "product": { "id": "cmx1prod01", "code": "PRD-123456", "name": "فرشة", "itemType": "STOCK", "hasExpiryDate": false },
+      "itemUnit": { "id": "cmx1unitcarton", "code": "unit-482913", "name": "كرتونة" }
+    }
+  ]
+}
+
+---------------------------------------------------------
+PURCHASE INVOICE APIs
+---------------------------------------------------------
+
+1) Create (DRAFT)
+   Method: POST
+   URL: /purchase-invoices
+
+   Request Example:
+   {
+     "invoiceDate": "2026-11-24",
+     "dueDate": "2026-12-24",
+     "supplierInvoiceNumber": "NILE-778",
+     "paymentType": "CREDIT",
+     "supplierId": "cmx1sup01",
+     "branchId": "cmx1branch01",
+     "warehouseId": "cmx1inv01",
+     "discountPercent": 10,
+     "taxPercent": 14,
+     "paidAmount": 500,
+     "lines": [
+       { "productId": "cmx1prod01", "itemUnitId": "cmx1unitcarton", "quantity": 10, "unitCost": 150 }
+     ]
+   }
+
+   Response (201): { "message": "Purchase invoice created successfully", "data": { ...invoice object, "status": "DRAFT" } }
+
+   Error Responses (besides the ones in doc/week2/purchase-quotations.txt for
+   lines, supplier, branch, warehouse and discounts, which are the same):
+   - 400 no default currency
+     { "statusCode": 400, "message": "There is no default currency: create one (POST /currency) or send currencyId", "error": "Bad Request", "code": "BAD_REQUEST", "field": "currencyId" }
+   - 400 a foreign currency without exchangeRate
+     { "statusCode": 400, "message": "exchangeRate is required for a currency that is not the default", "error": "Bad Request", "code": "BAD_REQUEST", "field": "exchangeRate" }
+   - 400 the default currency with a rate other than 1
+     { "statusCode": 400, "message": "exchangeRate must be 1 for the default currency", "error": "Bad Request", "code": "BAD_REQUEST", "field": "exchangeRate" }
+   - 400 paid more than the net
+     { "statusCode": 400, "message": "paidAmount must not be more than netTotal (1539)", "error": "Bad Request", "code": "BAD_REQUEST", "field": "paidAmount" }
+   - 400 dueDate before invoiceDate
+     { "statusCode": 400, "message": "dueDate must be on or after invoiceDate", "error": "Bad Request", "code": "BAD_REQUEST", "field": "dueDate" }
+   - 400 missing expiry date
+     { "statusCode": 400, "message": ["lines.1.expiryDate is required for this product (hasExpiryDate)"], "error": "Bad Request", "code": "VALIDATION_FAILED", "field": "lines.1.expiryDate" }
+   - 400 warehouseId / paymentType missing -> VALIDATION_FAILED
+   - 400 sending code / status / totals / paid-remaining / stockUnitCost -> "property X should not exist"
+
+2) List
+   Method: GET
+   URL: /purchase-invoices
+   Description: PAGINATED, newest invoiceDate first. Each item = header +
+                supplier / branch / warehouse / currency + "_count": { "lines": N }.
+                NO lines (open one invoice to see them).
+   Query (all optional): supplierId, branchId, warehouseId, status
+   (DRAFT / POSTED / CANCELLED), paymentType (CASH / CREDIT), dateFrom, dateTo
+   (invoiceDate, inclusive), search (part of the code, the supplier's invoice
+   number, the supplier name or the notes; any case), page, pageSize.
+   Response (200):
+   { "message": "Purchase invoices returned successfully", "data": { "items": [ ... ], "meta": { "page": 1, "pageSize": 20, "total": 7, "totalPages": 1 } } }
+
+3) Get one
+   Method: GET
+   URL: /purchase-invoices/:id
+   Response (200): { "message": "Purchase invoice returned successfully", "data": { ...invoice object } }
+   Error (404): { "statusCode": 404, "message": "Purchase invoice with id xxx not found", "error": "Not Found", "code": "NOT_FOUND", "field": null }
+   (Its purchase returns will be added here with the purchase-returns task.)
+
+4) Update (DRAFT only)
+   Method: PATCH
+   URL: /purchase-invoices/:id
+   Description: Any field from Create, all optional. "lines", when sent,
+                REPLACES ALL the lines. Totals and paid / remaining are always
+                computed again. null clears supplierInvoiceNumber / dueDate /
+                notes; null on other fields -> 400.
+   Response (200): { "message": "Purchase invoice updated successfully", "data": { ...invoice object } }
+   Error (409):
+   { "statusCode": 409, "message": "This invoice is POSTED: only a DRAFT invoice can be edited", "error": "Conflict", "code": "INVALID_STATUS", "field": "status" }
+
+5) Delete (DRAFT only)
+   Method: DELETE
+   URL: /purchase-invoices/:id
+   Response (200): { "message": "Purchase invoice deleted successfully", "data": null }
+   Error (409):
+   { "statusCode": 409, "message": "Only a DRAFT invoice can be deleted (cancel a POSTED invoice instead)", "error": "Conflict", "code": "INVALID_STATUS", "field": "status" }
+
+6) Post (ترحيل) - the stock goes UP
+   Method: POST
+   URL: /purchase-invoices/:id/post
+   Body: none
+   Description: DRAFT -> POSTED. Every STOCK line adds baseQuantity pieces to
+                the warehouse at stockUnitCost (a PURCHASE line in the item
+                card, sourceCode = the invoice code). All or nothing: if one
+                line fails, nothing is posted. Pressing it twice can't post
+                twice (the second gets 409).
+   Response (201): { "message": "Purchase invoice posted successfully", "data": { ...invoice object, "status": "POSTED" } }
+   Errors:
+   - 409 not DRAFT
+     { "statusCode": 409, "message": "This invoice is POSTED: only a DRAFT invoice can be posted", "error": "Conflict", "code": "INVALID_STATUS", "field": "status" }
+   - 400 a line's product was deleted after the draft was saved
+     { "statusCode": 400, "message": "productId does not exist", "error": "Bad Request", "code": "DOES_NOT_EXIST", "field": "lines.1.productId" }
+   - 400 a line still has no expiry date (e.g. converted from a quotation)
+     { "statusCode": 400, "message": ["lines.0.expiryDate is required for this product (hasExpiryDate)"], "error": "Bad Request", "code": "VALIDATION_FAILED", "field": "lines.0.expiryDate" }
+
+7) Cancel (إلغاء) - the stock goes DOWN again
+   Method: POST
+   URL: /purchase-invoices/:id/cancel
+   Body: none
+   Description: POSTED -> CANCELLED. Every piece the posting added is taken
+                out again (a PURCHASE_CANCEL line in the item card). The
+                average cost does not change. Nothing else changes (totals
+                stay). If some of the goods were already used, the whole
+                cancel is refused and NOTHING changes.
+   Response (201): { "message": "Purchase invoice cancelled successfully", "data": { ...invoice object, "status": "CANCELLED" } }
+   Errors:
+   - 409 not POSTED
+     { "statusCode": 409, "message": "This invoice is DRAFT: only a POSTED invoice can be cancelled", "error": "Conflict", "code": "INVALID_STATUS", "field": "status" }
+   - 400 not enough stock left
+     { "statusCode": 400, "message": "Insufficient stock: available 50, requested 120", "error": "Bad Request", "code": "INSUFFICIENT_STOCK", "field": "lines.0.quantity" }
+   (With purchase returns: cancelling an invoice that has a POSTED return
+   will be refused - cancel the return first.)
+
+8) Returnable quantities (for purchase returns)
+   Method: GET
+   URL: /purchase-invoices/:id/returnable
+   Description: For every line, in the LINE's unit (cartons): bought,
+                already returned (POSTED returns), still returnable.
+                Purchase returns come with the next task, so returned is "0" now.
+   Response (200):
+   {
+     "message": "Returnable quantities returned successfully",
+     "data": {
+       "invoiceId": "cmx1pi0001",
+       "code": "PI-2026-000001",
+       "status": "POSTED",
+       "lines": [
+         {
+           "lineId": "cmx1pil01",
+           "productId": "cmx1prod01",
+           "product": { "id": "...", "code": "PRD-123456", "name": "فرشة", "itemType": "STOCK", "hasExpiryDate": false },
+           "itemUnitId": "cmx1unitcarton",
+           "itemUnit": { "id": "...", "code": "unit-482913", "name": "كرتونة" },
+           "unitFactor": "12",
+           "quantity": "10",
+           "returnedQuantity": "0",
+           "remainingQuantity": "10"
+         }
+       ]
+     }
+   }
+
+Related change in /currency
+---------------------------
+DELETE /currency/:id is refused while any (not deleted) purchase invoice uses
+the currency:
+{ "statusCode": 400, "message": "Currency is used by 1 purchase invoice(s) and cannot be deleted", "error": "Bad Request", "code": "BAD_REQUEST", "field": null }
+
+Suggested Arabic messages
+-------------------------
+  INVALID_STATUS                          لا يمكن تنفيذ العملية في حالة المستند الحالية
+  INSUFFICIENT_STOCK                      الكمية المتاحة في المخزن غير كافية
+  BAD_REQUEST + currencyId                لا توجد عملة أساسية، أضف عملة أولًا
+  BAD_REQUEST + exchangeRate              سعر الصرف مطلوب للعملة غير الأساسية (والعملة الأساسية سعرها 1)
+  BAD_REQUEST + paidAmount                المدفوع أكبر من صافي الفاتورة
+  BAD_REQUEST + dueDate                   تاريخ الاستحقاق يجب أن يكون بعد تاريخ الفاتورة
+  VALIDATION_FAILED + lines.N.expiryDate  تاريخ الصلاحية مطلوب لهذا الصنف

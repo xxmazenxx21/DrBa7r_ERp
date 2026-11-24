@@ -1,13 +1,14 @@
 model Branch {
-  id               String            @id @default(cuid())
-  name             String
-  code             String            @unique
-  address          String?
-  inventory        Inventory[]
-  employees        Employee[]
-  users            User[]
-  purchaseInvoices PurchaseInvoice[]
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  deletedAt        DateTime?
+  id                 String              @id @default(cuid())
+  name               String
+  code               String              @unique
+  address            String?
+  inventory          Inventory[]
+  employees          Employee[]
+  users              User[]
+  purchaseInvoices   PurchaseInvoice[]
+  purchaseQuotations PurchaseQuotation[]
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  deletedAt          DateTime?
 }

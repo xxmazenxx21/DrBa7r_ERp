@@ -1,49 +1,89 @@
-model PurchaseInvoice {
-  id                    String    @id @default(cuid())
-  code                  String    @unique
-  supplierInvoiceNumber String?
-  invoiceDate           DateTime  @db.Date
-  dueDate               DateTime? @db.Date
+// فواتير الشراء: goods bought from a supplier. Same shape as a quotation
+// (header + lines) plus payment, POSTING (stock goes up) and CANCELLING
+// (stock goes down). Stock moves only through StockService.
 
-  supplierId String
+// الرأس
+model PurchaseInvoice {
+  id                    String         @id @default(cuid())
+  code                  String         @unique // رقم الفاتورة: PI-2026-000001 (NumberingService)
+  supplierInvoiceNumber String? // رقم فاتورة المورد (written on the supplier's paper)
+  invoiceDate           DateTime       @db.Date // تاريخ الفاتورة
+  dueDate               DateTime?      @db.Date // تاريخ الاستحقاق (>= invoiceDate, for CREDIT)
+  status                DocumentStatus @default(DRAFT) // الحالة (was Int)
+  paymentType           PaymentType // طريقة الدفع: CASH / CREDIT (was Int)
+
+  supplierId String // المورد
   supplier   Supplier @relation(fields: [supplierId], references: [id])
 
-  branchId String
+  branchId String // الفرع
   branch   Branch @relation(fields: [branchId], references: [id])
 
-  warehouseId String
+  warehouseId String // المخزن (required, must belong to the branch)
   warehouse   Inventory @relation(fields: [warehouseId], references: [id])
 
-  currencyId String?
+  currencyId String? // العملة (not sent -> the default currency)
   currency   Currency? @relation(fields: [currencyId], references: [id])
 
-  exchangeRate Decimal @default(1) @db.Decimal(18, 4)
-  paymentType  Int // (نقدي / آجل)
+  exchangeRate Decimal @default(1) @db.Decimal(18, 4) // سعر الصرف: 1 for the default currency, else required > 0
 
-  subTotal        Decimal @db.Decimal(18, 2)
-  discountPercent Decimal @default(0) @db.Decimal(5, 2)
-  discountValue   Decimal @default(0) @db.Decimal(18, 2)
-  taxValue        Decimal @default(0) @db.Decimal(18, 2)
-  netTotal        Decimal @db.Decimal(18, 2)
-  paidAmount      Decimal @default(0) @db.Decimal(18, 2)
-  remainingAmount Decimal @default(0) @db.Decimal(18, 2)
+  subTotal        Decimal @default(0) @db.Decimal(18, 2) // الإجمالي
+  discountPercent Decimal @default(0) @db.Decimal(5, 2) // نسبة الخصم %
+  discountValue   Decimal @default(0) @db.Decimal(18, 2) // قيمة الخصم
+  taxPercent      Decimal @default(0) @db.Decimal(5, 2) // نسبة الضريبة % (new)
+  taxValue        Decimal @default(0) @db.Decimal(18, 2) // قيمة الضريبة
+  netTotal        Decimal @db.Decimal(18, 2) // الصافي
+  paidAmount      Decimal @default(0) @db.Decimal(18, 2) // المدفوع: CASH = netTotal, CREDIT 0..netTotal
+  remainingAmount Decimal @default(0) @db.Decimal(18, 2) // المتبقي = netTotal - paidAmount
 
-  status Int // (Draft/Confirmed/Posted/Cancelled)
-
-  isPosted     Boolean   @default(false)
-  postedDate   DateTime?
-  postedBy     String?
+  postedDate   DateTime? // تاريخ الترحيل
+  postedBy     String? // رحّلها
   postedByUser User?     @relation("PostedInvoices", fields: [postedBy], references: [id])
 
-  notes String? @db.VarChar(500)
+  cancelledDate   DateTime? // تاريخ الإلغاء (new)
+  cancelledBy     String? // ألغاها (new)
+  cancelledByUser User?     @relation("CancelledInvoices", fields: [cancelledBy], references: [id])
 
-  createdBy     String
+  notes String? @db.VarChar(500) // ملاحظات
+
+  createdBy     String // أنشأها
   createdByUser User     @relation("CreatedInvoices", fields: [createdBy], references: [id])
   createdDate   DateTime @default(now())
 
-  modifiedBy     String?
+  modifiedBy     String? // عدّلها
   modifiedByUser User?     @relation("ModifiedInvoices", fields: [modifiedBy], references: [id])
   modifiedDate   DateTime? @updatedAt
 
   deletedAt DateTime?
+
+  lines                  PurchaseInvoiceLine[]
+  convertedFromQuotation PurchaseQuotation? // the quotation this invoice came from (if any)
+
+  @@index([supplierId])
+  @@index([branchId])
+  @@index([invoiceDate])
+}
+
+// البنود. No deletedAt: a DRAFT's lines are replaced on edit; a POSTED
+// invoice can't be edited.
+model PurchaseInvoiceLine {
+  id                String          @id @default(cuid())
+  purchaseInvoiceId String
+  purchaseInvoice   PurchaseInvoice @relation(fields: [purchaseInvoiceId], references: [id], onDelete: Cascade)
+  productId         String // الصنف
+  product           Product         @relation(fields: [productId], references: [id])
+  itemUnitId        String // الوحدة (the purchase unit, e.g. carton)
+  itemUnit          ItemUnit        @relation(fields: [itemUnitId], references: [id])
+  unitFactor        Decimal         @db.Decimal(18, 4) // معامل الوحدة (getUnitFactor, snapshot)
+  quantity          Decimal         @db.Decimal(18, 4) // الكمية in the purchase unit (10 cartons)
+  baseQuantity      Decimal         @db.Decimal(18, 4) // الكمية بالقطعة = quantity x unitFactor (120)
+  unitCost          Decimal         @db.Decimal(18, 4) // سعر شراء الوحدة (150 a carton)
+  discountPercent   Decimal?        @db.Decimal(5, 2) // نسبة خصم البند % (one of the two)
+  discountValue     Decimal?        @db.Decimal(18, 4) // قيمة خصم البند
+  lineTotal         Decimal         @db.Decimal(18, 4) // إجمالي البند (calcLine)
+  stockUnitCost     Decimal         @default(0) @db.Decimal(18, 4) // تكلفة القطعة في المخزن (set when posted; 11.25 in the example)
+  batchNumber       String?         @db.VarChar(50) // رقم التشغيلة
+  expiryDate        DateTime?       @db.Date // تاريخ الصلاحية (required if the product hasExpiryDate)
+  notes             String?         @db.VarChar(250) // ملاحظات
+
+  @@index([purchaseInvoiceId])
 }

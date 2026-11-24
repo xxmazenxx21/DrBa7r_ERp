@@ -10,27 +10,29 @@ enum CostingMethod {
 }
 
 model Product {
-  id                 String             @id @default(cuid())
-  code               String             @unique
-  barcode            String?            @unique
-  name               String
-  categoryId         String
-  category           Categories         @relation(fields: [categoryId], references: [id])
-  primaryItemUnitId  String
-  primaryItemUnit    ItemUnit           @relation(fields: [primaryItemUnitId], references: [id])
-  itemType           ItemType           @default(STOCK)
-  costingMethod      CostingMethod      @default(WEIGHTED_AVERAGE)
-  retailPrice        Decimal            @db.Decimal(18, 4)
-  wholesalePrice     Decimal            @db.Decimal(18, 4)
-  bulkWholesalePrice Decimal            @db.Decimal(18, 4)
-  reorderLimit       Decimal            @default(0) @db.Decimal(18, 4)
-  hasExpiryDate      Boolean            @default(false)
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
-  deletedAt          DateTime?
-  productInventories ProductInventory[]
-  units              ProductUnit[]
-  stockMovements     StockMovement[]
+  id                     String                  @id @default(cuid())
+  code                   String                  @unique
+  barcode                String?                 @unique
+  name                   String
+  categoryId             String
+  category               Categories              @relation(fields: [categoryId], references: [id])
+  primaryItemUnitId      String
+  primaryItemUnit        ItemUnit                @relation(fields: [primaryItemUnitId], references: [id])
+  itemType               ItemType                @default(STOCK)
+  costingMethod          CostingMethod           @default(WEIGHTED_AVERAGE)
+  retailPrice            Decimal                 @db.Decimal(18, 4)
+  wholesalePrice         Decimal                 @db.Decimal(18, 4)
+  bulkWholesalePrice     Decimal                 @db.Decimal(18, 4)
+  reorderLimit           Decimal                 @default(0) @db.Decimal(18, 4)
+  hasExpiryDate          Boolean                 @default(false)
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  deletedAt              DateTime?
+  productInventories     ProductInventory[]
+  units                  ProductUnit[]
+  stockMovements         StockMovement[]
+  purchaseQuotationLines PurchaseQuotationLine[]
+  purchaseInvoiceLines   PurchaseInvoiceLine[]
 }
 
 model ProductInventory {

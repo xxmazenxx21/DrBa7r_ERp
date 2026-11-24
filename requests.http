@@ -389,3 +389,137 @@ Authorization: Bearer {{token}}
 ### All movements, newest first (filters: productId, warehouseId, type, dateFrom, dateTo; paginated)
 GET {{baseUrl}}/stock-movements?type=ADJUSTMENT&page=1&pageSize=20
 Authorization: Bearer {{token}}
+
+### ---------- Purchase quotations (Task 6) ----------
+
+### A supplier for the purchase documents
+# @name createNileSupplier
+POST {{baseUrl}}/supplier
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "name": "النيل"
+}
+
+### Quotation: 10 cartons x 150, discount 10%, tax 14%
+# -> subTotal 1500, discountValue 150, taxValue 189, netTotal 1539 (code PQ-<year>-000001, DRAFT)
+# itemUnitId: the carton unit of the product (createCartonUnit above, factor 12)
+# @name createQuotation
+POST {{baseUrl}}/purchase-quotations
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "quotationDate": "2026-11-20",
+  "validUntil": "2026-12-31",
+  "supplierId": "{{createNileSupplier.response.body.data.id}}",
+  "branchId": "{{cairoBranchId}}",
+  "warehouseId": "{{cairoInventoryId}}",
+  "discountPercent": 10,
+  "taxPercent": 14,
+  "lines": [
+    {
+      "productId": "{{createProduct.response.body.data.id}}",
+      "itemUnitId": "{{createCartonUnit.response.body.data.itemUnitId}}",
+      "quantity": 10,
+      "unitPrice": 150
+    }
+  ]
+}
+
+### List quotations (paginated; filters supplierId, branchId, status, dateFrom, dateTo, search)
+GET {{baseUrl}}/purchase-quotations?status=DRAFT&page=1&pageSize=20
+Authorization: Bearer {{token}}
+
+### One quotation (lines + isExpired)
+GET {{baseUrl}}/purchase-quotations/{{createQuotation.response.body.data.id}}
+Authorization: Bearer {{token}}
+
+### Edit (DRAFT / SENT only): "lines" would REPLACE all lines
+PATCH {{baseUrl}}/purchase-quotations/{{createQuotation.response.body.data.id}}
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "notes": "السعر شامل التوصيل"
+}
+
+### DRAFT -> SENT
+PATCH {{baseUrl}}/purchase-quotations/{{createQuotation.response.body.data.id}}/status
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "status": "SENT"
+}
+
+### SENT -> ACCEPTED
+PATCH {{baseUrl}}/purchase-quotations/{{createQuotation.response.body.data.id}}/status
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "status": "ACCEPTED"
+}
+
+### Convert the ACCEPTED quotation into a DRAFT purchase invoice (quotation -> CONVERTED)
+# warehouseId: only needed when the quotation has none
+POST {{baseUrl}}/purchase-quotations/{{createQuotation.response.body.data.id}}/convert-to-invoice
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "paymentType": "CREDIT",
+  "invoiceDate": "2026-11-25"
+}
+
+### ---------- Purchase invoices (Task 7) ----------
+
+### Invoice: 10 cartons x 150, discount 10%, tax 14%, CREDIT paid 500
+# -> net 1539, remaining 1039 (DRAFT, code PI-<year>-000001). No currencyId = the default currency.
+# @name createInvoice
+POST {{baseUrl}}/purchase-invoices
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "invoiceDate": "2026-11-24",
+  "dueDate": "2026-12-24",
+  "supplierInvoiceNumber": "NILE-778",
+  "paymentType": "CREDIT",
+  "supplierId": "{{createNileSupplier.response.body.data.id}}",
+  "branchId": "{{cairoBranchId}}",
+  "warehouseId": "{{cairoInventoryId}}",
+  "discountPercent": 10,
+  "taxPercent": 14,
+  "paidAmount": 500,
+  "lines": [
+    {
+      "productId": "{{createProduct.response.body.data.id}}",
+      "itemUnitId": "{{createCartonUnit.response.body.data.itemUnitId}}",
+      "quantity": 10,
+      "unitCost": 150
+    }
+  ]
+}
+
+### Post (ترحيل): stock + 120 pieces at 11.25 each (PURCHASE movement)
+POST {{baseUrl}}/purchase-invoices/{{createInvoice.response.body.data.id}}/post
+Authorization: Bearer {{token}}
+
+### Post again -> 409 INVALID_STATUS
+POST {{baseUrl}}/purchase-invoices/{{createInvoice.response.body.data.id}}/post
+Authorization: Bearer {{token}}
+
+### What can still be returned, per line
+GET {{baseUrl}}/purchase-invoices/{{createInvoice.response.body.data.id}}/returnable
+Authorization: Bearer {{token}}
+
+### List invoices (paginated; filters supplierId, branchId, warehouseId, status, paymentType, dateFrom, dateTo, search)
+GET {{baseUrl}}/purchase-invoices?status=POSTED&page=1&pageSize=20
+Authorization: Bearer {{token}}
+
+### Cancel (إلغاء): stock - 120 again (PURCHASE_CANCEL). 400 INSUFFICIENT_STOCK if the goods were used
+POST {{baseUrl}}/purchase-invoices/{{createInvoice.response.body.data.id}}/cancel
+Authorization: Bearer {{token}}
