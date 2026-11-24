@@ -12,10 +12,9 @@ What changed:
   3. Two new list endpoints: GET /inventory and GET /employees    -> new
   4. Every error now has a stable "code" and a "field"            -> new (use it to translate)
 
-Base URL (unchanged)
---------------------
-Production:      https://drba7rerp-production.up.railway.app
-Local (Docker):  http://localhost:3000
+Base URL
+--------
+http://localhost:3000   (the backend runs on your machine with Docker, see README.md)
 
 
 =====================================================================

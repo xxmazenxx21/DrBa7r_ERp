@@ -1,6 +1,9 @@
 ERP API - Week 2 Overview
 =========================
 
+>>> Frontend: read doc/FRONTEND_WEEK2_READ_FIRST.txt first (everything new or
+>>> changed in Week 2, updated with every task), then this file.
+
 Week 2 adds purchasing: currencies, product units, stock movements, purchase
 quotations, purchase invoices and purchase returns. One .txt file per module
 in this folder. Everything in doc/week1/00-overview.txt still applies
@@ -9,8 +12,7 @@ decimal limits, null clears nullable fields).
 
 Base URL
 --------
-Production:      https://drba7rerp-production.up.railway.app
-Local (Docker):  http://localhost:3000
+http://localhost:3000   (the backend runs on your machine with Docker, see README.md)
 
 
 Files in this folder

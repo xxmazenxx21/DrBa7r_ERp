@@ -1,0 +1,241 @@
+FRONTEND - READ THIS FIRST (Week 2 backend changes)
+===================================================
+
+>>> This file is updated with every Week 2 task. Check the "Last update" line
+>>> below after every pull.
+
+Last update: Week 2 Tasks 1-5 (setup, numbering, currency, product units,
+stock) + "primary unit lock".
+
+
+0. Get the new backend (IMPORTANT)
+----------------------------------
+There is no online server anymore. You run the backend on your machine:
+
+    git checkout main
+    git pull origin main
+    docker compose up -d --build
+
+"--build" is REQUIRED: it rebuilds the API and runs the new database
+migrations (your data is kept). Without it the new endpoints answer 404.
+Full steps (first time, logs, reset): README.md, section "Run the backend
+locally (for the frontend developer)".
+
+Base URL
+--------
+http://localhost:3000   (login: admin / admin123)
+
+How to read the docs
+--------------------
+  1. Week 1 files first (if you haven't): doc/FRONTEND_WEEK1_READ_FIRST.txt,
+     doc/FRONTEND_WEEK1_UPDATE_2.txt, doc/FRONTEND_WEEK1_UPDATE_3.txt
+  2. THIS file (what is new / changed in Week 2)
+  3. doc/week2/00-overview.txt (pagination, error codes, how totals work)
+  4. the module files in doc/week2/ (exact bodies for every endpoint)
+Everything from Week 1 still applies: SUPERADMIN only, { message, data },
+errors with "code" + "field", soft delete, numbers returned as strings,
+null clears nullable fields.
+
+
+=====================================================================
+PART 1 - NEW IN WEEK 2 (what exists so far)
+=====================================================================
+
+1.1 Currencies (العملات)  - doc/week2/currency.txt
+-------------------------------------------------
+    POST   /currency          create      (you send "code": EGP, USD... 3 capital letters)
+    GET    /currency          list        (default currency first; plain array)
+    GET    /currency/:id      one
+    PATCH  /currency/:id      update
+    DELETE /currency/:id      soft delete
+  Only ONE default currency (isDefault: true). Making another one the default
+  unsets the old one automatically. The default can't be deleted or set to
+  false (400) - make another currency the default instead.
+  If the company only uses pounds: create EGP with "isDefault": true.
+
+1.2 Product units (وحدات الصنف)  - doc/week2/product-units.txt
+------------------------------------------------------------
+    POST   /products/:productId/units   add a unit (carton = 12 pieces)
+    GET    /products/:productId/units   all units: the PRIMARY unit first
+                                        (factor "1", id null), then the others
+    PATCH  /product-units/:id           update
+    DELETE /product-units/:id           soft delete (POST it again -> restored)
+  "factor" = how many primary units (pieces) one unit holds.
+  Use GET /products/:productId/units for the unit dropdown on document lines.
+
+1.3 Stock movements and item card (حركات المخزن وكارت الصنف)  - doc/week2/stock.txt
+---------------------------------------------------------------------------------
+    GET /stock-movements                 all movements, newest first, PAGINATED
+                                         filters: productId, warehouseId, type,
+                                         dateFrom, dateTo
+    GET /stock-movements/item-card?productId=...&warehouseId=...
+                                         the item card: one product in one
+                                         warehouse, oldest first, with the
+                                         balance after every line
+  READ ONLY: there is no POST. Movements are written by the server when stock
+  changes (product-inventory now, purchase invoices / returns later).
+  Old Week 1 stock got one OPENING movement each ("Week 1 opening balance").
+
+1.4 Paginated lists (new Week 2 lists only)
+-------------------------------------------
+  ?page=1&pageSize=20   (page >= 1, pageSize 1 to 100, default 20)
+
+  BEFORE (Week 1 lists, unchanged):   "data": [ ... ]
+  AFTER  (Week 2 paginated lists):    "data": {
+                                        "items": [ ... ],
+                                        "meta": { "page": 1, "pageSize": 20, "total": 57, "totalPages": 3 }
+                                      }
+  Paginated so far: GET /stock-movements. (GET /currency is a plain array.)
+
+1.5 Document numbers (for the next tasks)
+-----------------------------------------
+  Quotations / invoices / returns will get numbers like PI-2026-000001 from
+  the server (see doc/week2/numbering.txt). You never send them.
+
+
+=====================================================================
+PART 2 - CHANGES TO EXISTING ENDPOINTS (BEFORE / AFTER)
+=====================================================================
+
+2.1 PATCH /product-inventory/:id needs "reason"                  -> BREAKING
+---------------------------------------------------------------------------
+Every stock change is now recorded in the item card. A manual change
+(stock count / correction) needs a reason when quantity or cost REALLY changes.
+
+BEFORE:  PATCH /product-inventory/:id   { "quantity": 90 }
+         -> 200
+AFTER:   PATCH /product-inventory/:id   { "quantity": 90 }
+         -> 400
+         { "statusCode": 400, "message": ["reason is required when quantity or costPrice changes"], "error": "Bad Request", "code": "VALIDATION_FAILED", "field": "reason" }
+         PATCH /product-inventory/:id   { "quantity": 90, "reason": "جرد" }
+         -> 200 (writes an ADJUSTMENT movement of -10)
+  reason: text, not empty, max 250 characters. Sending the same values
+  (nothing changes) needs no reason.
+  Also: POST /product-inventory/... writes an OPENING movement, and DELETE
+  first sets the stock to 0 (ADJUSTMENT, reason "حذف الصنف من المخزن").
+  Suggested UI: a required "السبب" box in the stock edit dialog.
+  Arabic: سبب التسوية مطلوب عند تغيير الكمية أو التكلفة
+
+2.2 SERVICE products can't be put in a warehouse                 -> BREAKING
+---------------------------------------------------------------------------
+BEFORE:  POST /product-inventory/inventory/:id { "productId": <a SERVICE product>, ... }
+         -> 201
+AFTER:   -> 400
+         { "statusCode": 400, "message": "Service items (SERVICE) have no stock", "error": "Bad Request", "code": "BAD_REQUEST", "field": "productId" }
+  Suggested UI: hide SERVICE products in the "add to warehouse" product picker.
+  Arabic: الأصناف الخدمية ليس لها مخزون
+
+2.3 A product can't become SERVICE while it's in a warehouse       -> BREAKING
+---------------------------------------------------------------------------
+BEFORE:  PATCH /products/:id { "itemType": "SERVICE" }   -> 200 (even with stock)
+AFTER:   -> 400 while the product still has a /product-inventory record
+         { "statusCode": 400, "message": "itemType can't be SERVICE while the product is in a warehouse; remove it from the warehouses first", "error": "Bad Request", "code": "BAD_REQUEST", "field": "itemType" }
+  Arabic: لا يمكن تحويل الصنف لخدمي وهو موجود في مخزن
+
+2.4 The primary unit is locked once the product is used            -> BREAKING
+---------------------------------------------------------------------------
+Every stock quantity and every unit factor is counted in the product's
+primary unit (carton = 12 PIECES), so it can't change after that.
+
+BEFORE:  PATCH /products/:id { "primaryItemUnitId": "<another unit>" }   -> 200
+AFTER:   -> 400 if the product has ANY stock movement (ever) or ANY active
+         product unit:
+         { "statusCode": 400, "message": "primaryItemUnitId can't change: stock and units are stored in the current primary unit", "error": "Bad Request", "code": "BAD_REQUEST", "field": "primaryItemUnitId" }
+  This also covers "make one of its units (e.g. the carton) the primary unit".
+  Sending the SAME primaryItemUnitId is fine. A new product (no stock, no
+  units) can still change it.
+  Suggested UI: make the primary unit read-only once the product has units
+  or stock.
+  Arabic: لا يمكن تغيير الوحدة الأساسية بعد استخدام الصنف (له حركات مخزن أو وحدات)
+
+  Also: the primary unit can't be added as another unit (POST
+  /products/:productId/units with the primary itemUnitId -> 400, field itemUnitId).
+  Arabic: هذه هي الوحدة الأساسية للصنف (معاملها 1) ولا يمكن إضافتها مرة أخرى
+
+2.5 An item unit used by a product unit can't be deleted            -> BREAKING
+---------------------------------------------------------------------------
+BEFORE:  DELETE /item-unit/:id   -> 200 (if no product used it as primary unit)
+AFTER:   -> 400 also when an active product unit uses it
+         { "statusCode": 400, "message": "ItemUnit is used by 2 product unit(s) and cannot be deleted", "error": "Bad Request", "code": "BAD_REQUEST", "field": null }
+  Arabic: لا يمكن حذف الوحدة لأنها مستخدمة في وحدات أصناف
+
+2.6 GET /products/:id has "units"                                    -> new (additive)
+---------------------------------------------------------------------------
+BEFORE:  data = { ...product, category, primaryItemUnit, productInventories }
+AFTER:   data = { ...product, category, primaryItemUnit, productInventories,
+                  "units": [ { "id", "itemUnitId", "factor": "12", "barcode",
+                               "retailPrice", "itemUnit": { "name": "كرتونة", ... }, ... } ] }
+  "units" does NOT include the primary unit (that is primaryItemUnit, factor 1).
+
+
+=====================================================================
+PART 3 - NEW ERROR CODES
+=====================================================================
+Same error shape as always: { statusCode, message, error, code, field }.
+
+  code                status  when                                         suggested Arabic message
+  ------------------  ------  -------------------------------------------  ----------------------------------------------
+  INVALID_STATUS      409     the action is not allowed in the document's   لا يمكن تنفيذ العملية في حالة المستند الحالية
+                              current status (e.g. posting an invoice that
+                              is already posted)
+  INSUFFICIENT_STOCK  400     not enough quantity in the warehouse          الكمية المتاحة في المخزن غير كافية
+                              (field "quantity")
+  QUANTITY_EXCEEDED   400     returning more than was bought                الكمية أكبر من المسموح بإرجاعه
+
+Example:
+  { "statusCode": 400, "message": "Insufficient stock: available 196, requested 197", "error": "Bad Request", "code": "INSUFFICIENT_STOCK", "field": "quantity" }
+
+INVALID_STATUS and QUANTITY_EXCEEDED are not returned yet: they arrive with
+purchase invoices / returns. Add the translations now.
+
+
+=====================================================================
+PART 4 - ARABIC LABELS
+=====================================================================
+
+4.1 New fields
+--------------
+  Currency:       code = كود العملة, name = اسم العملة, symbol = الرمز,
+                  isDefault = العملة الأساسية
+  Product unit:   itemUnitId = الوحدة, factor = عدد القطع في الوحدة,
+                  barcode = باركود الوحدة, retailPrice = سعر بيع الوحدة
+  Stock movement: movementDate = تاريخ الحركة, type = نوع الحركة,
+                  productId = الصنف, warehouseId = المخزن, quantity = الكمية,
+                  unitCost = تكلفة القطعة, totalCost = إجمالي التكلفة,
+                  balanceAfter = الرصيد بعد الحركة,
+                  avgCostAfter = متوسط التكلفة بعد الحركة,
+                  sourceType = نوع المستند, sourceCode = رقم المستند,
+                  reason = السبب, createdBy = بواسطة, createdDate = تاريخ التسجيل
+  Product inventory: costPrice = متوسط التكلفة (it is the AVERAGE cost now)
+
+4.2 Enum values (send / receive the TEXT value)
+-----------------------------------------------
+  StockMovementType   OPENING = رصيد افتتاحي
+                      ADJUSTMENT = تسوية
+                      PURCHASE = شراء
+                      PURCHASE_CANCEL = إلغاء فاتورة شراء
+                      PURCHASE_RETURN = مرتجع شراء
+                      PURCHASE_RETURN_CANCEL = إلغاء مرتجع شراء
+  DocumentType        PQ = عرض سعر شراء, PI = فاتورة شراء, PR = مرتجع شراء
+  DocumentStatus      DRAFT = مسودة, POSTED = مُرحّل, CANCELLED = ملغي
+  QuotationStatus     DRAFT = مسودة, SENT = مُرسل, ACCEPTED = مقبول,
+                      REJECTED = مرفوض, CONVERTED = تم التحويل لفاتورة
+  PaymentType         CASH = نقدي, CREDIT = آجل
+  (Week 1, unchanged) ItemType STOCK = مخزني, SERVICE = خدمي;
+                      CostingMethod WEIGHTED_AVERAGE = متوسط التكلفة المرجح
+
+All suggested Arabic texts are suggestions: adjust the wording if needed.
+
+
+=====================================================================
+CHECKLIST
+=====================================================================
+[ ] git pull origin main + docker compose up -d --build
+[ ] Currencies screen (default badge, "make default" button, no delete on the default)
+[ ] Product units section on the product screen + unit dropdown from GET /products/:productId/units
+[ ] Item card screen (GET /stock-movements/item-card) + movements list (paginated)
+[ ] "reason" box in the stock edit dialog (PATCH /product-inventory/:id)
+[ ] Hide SERVICE products when adding stock
+[ ] Primary unit read-only once the product has units or stock
+[ ] Translations for INVALID_STATUS, INSUFFICIENT_STOCK, QUANTITY_EXCEEDED
+[ ] Paginated lists read data.items + data.meta

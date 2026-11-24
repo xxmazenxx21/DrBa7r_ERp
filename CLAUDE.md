@@ -3,11 +3,17 @@
 ERP backend (drba7r): NestJS 11 + Prisma 7 + PostgreSQL, a REST API with JWT auth.
 **Keep this file updated** whenever modules, models, conventions or the run setup change.
 
+## Environments and branches
+
+- **There is no deployed server** (the old hosted server was removed; never add a hosted URL to the docs). Nothing runs online.
+- `main` = what the frontend uses. Work happens on `dev`, **one commit per task**, and `dev` is merged into `main` only after review. **Never push unfinished work to `main`.**
+- The frontend developer runs the backend from `main` with Docker on `http://localhost:3000` (`git pull origin main` → `docker compose up -d --build`; see README "Run the backend locally (for the frontend developer)"). So every change on `main` must work from a fresh `docker compose up -d --build` and from an upgrade of an existing volume (migrations run on start; the admin is seeded only when there are no users).
+
 ## Run
 
 **Docker (recommended, one command):**
 ```bash
-docker compose up -d --build     # API on :3000, Postgres on host :5433
+docker compose up -d --build     # API on :3000 (service `api`), Postgres on host :5433 (service `db`)
 docker compose logs -f api
 docker compose down              # stops; DB data is KEPT (named volume `pgdata`)
 docker compose down -v           # also DELETES the database volume
@@ -28,12 +34,12 @@ Other scripts: `npm run build` (= `prisma generate && nest build`), `npm run lin
 ## Architecture
 
 - `src/main.ts`: global `AppValidationPipe` (`src/pipes/app-validation.pipe.ts`, a `ValidationPipe` with `whitelist + forbidNonWhitelisted + transform`), so an unknown body **or query** field gives 400 `"property X should not exist"`. Its errors keep Nest's message array and add `code: VALIDATION_FAILED` plus `field` (the first invalid property). **Every DTO field must have a class-validator decorator** or it will be rejected. Optional fields: `@IsOptional()` when the DB column is nullable (null is allowed and clears it) or the field is ignored; `@IsOptionalNotNull()` (`src/utils/validation/optional.ts`) when the column is NOT nullable (null → 400 instead of a Prisma 500). Numbers: `@Type(() => Number) @IsNumber()` plus `@MaxDecimalPlaces(4)` for prices/quantities/costs or `@MaxDecimalPlaces(2)` for money (`src/utils/validation/max-decimal-places.ts`; don't use class-validator's `maxDecimalPlaces`, it throws on `1e-7`). Update DTOs are `PartialType(CreateXDto, { skipNullProperties: false })`, so PATCH null is validated: it clears nullable fields and gives 400 on the others. Usernames use `@IsUsername()` (`src/utils/validation/username.ts`: trimmed, `/^[A-Za-z0-9._-]{3,30}$/`); login only trims. CORS allows any origin. Port is `PORT` or 3000.
-- `src/app.module.ts`: global `ConfigModule` and global `JwtModule` (secret `JWT_SECRET`, fallback `'defaultSecret'`, expiry 3650d). Two global guards: `AuthGuard` then `RolesGuard`.
+- `src/app.module.ts`: global `ConfigModule` and global `JwtModule` (secret `JWT_SECRET`, fallback `'defaultSecret'`, expiry 3650d; both to fix before delivery, see Postponed). Two global guards: `AuthGuard` then `RolesGuard`.
 - **Auth:** every route requires `Authorization: Bearer <token>` unless it is marked `@Public()` (`src/decorators/public.decorator.ts`). The JWT payload is `{ sub, username, role }` (type `JwtPayload` in `src/guards/auth.guard.ts`) and is put on `request.user` (`AuthRequest`).
   - **Current user:** `@CurrentUser()` (`src/decorators/current-user.decorator.ts`) gives the JWT payload, `@CurrentUser('sub')` just the user id. Use it for `createdBy` / `postedBy`; **never take a user id from the body**.
   - The only public routes are `POST /auth/signup`, `POST /auth/login` and `POST /users/login`. Both login routes call `AuthService.login`; `AuthModule` exports `AuthService` for that.
-  - **Roles:** every other handler has `@Roles(Role.SUPERADMIN)`, put on **each method** (not the class). Non-SUPERADMIN users get 403, and no token gives 401. The owner will open up roles per endpoint later. New handlers must get `@Roles(Role.SUPERADMIN)` too, unless told otherwise.
-  - **TEMPORARY signup:** `POST /auth/signup` always creates a **SUPERADMIN** (a client-sent `role` is validated but ignored). **It must be removed before production.** It is marked with a `// TEMPORARY` comment in `auth.controller.ts` and `auth.service.ts`.
+  - **Roles:** every other handler has `@Roles(Role.SUPERADMIN)`, put on **each method** (not the class). Non-SUPERADMIN users get 403, and no token gives 401. Real roles per endpoint come in Week 5 (see Postponed). New handlers must get `@Roles(Role.SUPERADMIN)` too, unless told otherwise.
+  - **TEMPORARY signup:** `POST /auth/signup` always creates a **SUPERADMIN** (a client-sent `role` is validated but ignored). **It must be removed before delivery** (see Postponed). It is marked with a `// TEMPORARY` comment in `auth.controller.ts` and `auth.service.ts`.
 - **Errors: every error body is `{ statusCode, message, error, code, field }`** (type `ErrorBody`, codes in `src/utils/errors/error-codes.ts`): `ALREADY_EXISTS | DOES_NOT_EXIST | BELONGS_TO_DELETED | NOT_FOUND | VALIDATION_FAILED | UNAUTHORIZED | FORBIDDEN | BAD_REQUEST | INTERNAL_ERROR`, plus Week 2's `INVALID_STATUS` (409, action not allowed in the document's status), `INSUFFICIENT_STOCK` (400) and `QUANTITY_EXCEEDED` (400, returning more than bought). These three must always be thrown with `errorBody(...)` (the status fallback would give 409 → ALREADY_EXISTS / 400 → BAD_REQUEST). The frontend translates with `code` + `field`, so **never rename a code**, and keep message texts stable too. Two global filters are registered in `main.ts`, in this order (catch-all first, specific last):
   - `src/filters/http-exception.filter.ts` (`@Catch()`): an exception thrown with `errorBody(...)` keeps its code/field. Otherwise the code comes from the status (401 UNAUTHORIZED, 403 FORBIDDEN, 404 NOT_FOUND, 409 ALREADY_EXISTS, 400+array VALIDATION_FAILED, other 4xx BAD_REQUEST, anything else 500 INTERNAL_ERROR, logged) and `field` is null. It also fills in `error` when Nest leaves it out (e.g. 401).
   - To choose the code/field yourself, throw `new BadRequestException(errorBody(400, 'categoryId does not exist', ErrorCode.DOES_NOT_EXIST, 'categoryId'))`. That's how `assertExists` (DOES_NOT_EXIST), `assertNotUsedByDeleted` (BELONGS_TO_DELETED), "Product inventory already exists" (ALREADY_EXISTS, 400, field `productId`) and "branchId must match the employee's branch" (BAD_REQUEST, field `branchId`) do it.
@@ -69,7 +75,7 @@ Other scripts: `npm run build` (= `prisma generate && nest build`), `npm run lin
 - Models: Branch, Inventory, Categories, ItemUnit, Product, ProductUnit, ProductInventory, StockMovement, Customer, Supplier, Employee, User, Currency, PurchaseInvoice, DocumentSequence.
 - Week 2 enums live in `prisma/models/week2_enums.prisma` (migration `week2_enums_and_sequence`): `DocumentStatus` (DRAFT/POSTED/CANCELLED), `PaymentType` (CASH/CREDIT), `QuotationStatus` (DRAFT/SENT/ACCEPTED/REJECTED/CONVERTED), `DocumentType` (PQ/PI/PR), `StockMovementType` (OPENING/ADJUSTMENT/PURCHASE/PURCHASE_CANCEL/PURCHASE_RETURN/PURCHASE_RETURN_CANCEL). `PurchaseInvoice.status` / `paymentType` are still `Int` until the purchase-invoices task.
 - **Document numbers** (`DocumentSequence`, `@@unique([docType, year])`): only `NumberingService.next()` touches this table. Always call it with the **same `tx`** that creates the document (`prisma.$transaction(async (tx) => { const code = await this.numbering.next(tx, 'PI', dto.invoiceDate); ... })`), so a failed document doesn't burn a number and the locked counter row serializes concurrent creates. It's a native upsert (`INSERT … ON CONFLICT`), safe for the first number of a year too. Year = `date.getUTCFullYear()`.
-- Design reference for upcoming work (purchase/sales invoices, returns, quotations): `Week2_ERP_DB_Design_Purchase_Sales.md`, and the task list `doc/week2/Week 2 Tasks.pdf` (work on branch `dev`, one commit per task). `PurchaseInvoice` has a model but no API module yet.
+- Design reference for upcoming work (purchase/sales invoices, returns, quotations): `Week2_ERP_DB_Design_Purchase_Sales.md` and `doc/week2/Week 2 Tasks.pdf` (see Week 2 progress). `PurchaseInvoice` has a model but no API module yet.
 
 ## Conventions
 
@@ -83,7 +89,7 @@ Other scripts: `npm run build` (= `prisma generate && nest build`), `npm run lin
 - **Never pass a raw DTO to Prisma.** Build the `data` object field by field, so only known fields reach the DB. `code` is never copied from a DTO (always `generateCode`), on create or update.
 - Never return a user's `password`: use `select: safeUserSelect` in every query that returns a user. `lastLoginDate` is set only on login.
 - Errors: Nest exceptions from the services (`NotFoundException`, `BadRequestException`…). Wrap the body in `errorBody(...)` when the code/field should be more specific than the status default.
-- `PATCH /product-inventory/:id` (sets quantity/costPrice) is **intentional**: the admin uses it to manually correct a wrong opening quantity or cost / record a stock count. Don't remove it. Since Week 2 it goes through `StockService.adjust` (ADJUSTMENT movement, `reason` required when something changes); from Week 5 only SUPERADMIN/ADMIN.
+- `PATCH /product-inventory/:id` (sets quantity/costPrice) is **intentional**: the admin uses it to manually correct a wrong opening quantity or cost / record a stock count. Don't remove it. Since Week 2 it goes through `StockService.adjust` (ADJUSTMENT movement, `reason` required when something changes).
 - The old misspellings were fixed in migration `20261122000000_week1_naming_and_enums` (renames, data kept): route `/prodcut-inventory` → `/product-inventory` (module `src/product-inventory`, classes `ProductInventory*`), `Product.primaryIteamUnitId`/`primaryIteamUnit` → `primaryItemUnitId`/`primaryItemUnit` (FK constraint renamed too), Role `ACCOUNTENT` → `ACCOUNTANT`, and `src/utils/codeGenratror` → `src/utils/code-generator`. **Don't reintroduce the old names.** Any future rename of a column or enum value must be a hand-written `RENAME`, never Prisma's drop/re-create draft.
 - **Product enums:** `itemType ItemType @default(STOCK)` (`STOCK` = مخزني, `SERVICE` = خدمي) and `costingMethod CostingMethod @default(WEIGHTED_AVERAGE)` (متوسط التكلفة المرجح). Both are optional in DTOs (`@IsEnum`). The same migration converted old ints (`itemType` 2 → SERVICE, else STOCK; every `costingMethod` → WEIGHTED_AVERAGE).
 - **Product units** (`ProductUnit`, migration `product_units`): per product, how many primary units one `itemUnitId` holds (`factor` Decimal(18,4) > 0, optional unique `barcode`, optional `retailPrice`), `@@unique([productId, itemUnitId])`. The primary unit is never a row (factor 1 implicitly) and can't be added. Re-POSTing a deleted unit **restores** that row (201 "Product unit restored successfully"), like product-inventory; `assertNotUsedByDeleted(..., excludeId)` lets the restored row keep its own old barcode. `GET /products/:productId/units` = one list, primary first (`id: null`, `isPrimary: true`), then by factor. **`getUnitFactor(productId, itemUnitId, db?)`** is the only way documents convert a line unit to base units: primary → 1, a unit row → its factor, else 400 BAD_REQUEST field `itemUnitId` "unit is not defined for this product". Guards: **the primary unit is locked once used**: `PATCH /products/:id` with a *different* `primaryItemUnitId` → 400 BAD_REQUEST field `primaryItemUnitId` "primaryItemUnitId can't change: stock and units are stored in the current primary unit" when the product has ANY `StockMovement` (permanent, so forever) or ANY active `ProductUnit` (`ProductsService.assertPrimaryUnitNotUsed`; the same value is allowed). Every stored quantity and factor is in the primary unit, so it must never change under them; `DELETE /item-unit/:id` also refuses units used by active product units. `GET /products/:id` includes `units`.
@@ -95,7 +101,7 @@ Other scripts: `npm run build` (= `prisma generate && nest build`), `npm run lin
   - The `stock_movements` migration backfilled one OPENING movement ("Week 1 opening balance", createdBy = oldest active SUPERADMIN) per active Week 1 stock row and set soft-deleted rows to quantity 0.
 - **Default currency** (`Currency.isDefault`, migration `currency_symbol_default`, which also added `symbol String?`): at most one active currency is default, and once one exists there is always one. `isDefault: true` on create/update unsets the others in the same transaction; deleting the default or PATCHing it to `false` → 400 BAD_REQUEST field `isDefault`. Every write that can touch the default runs in `CurrencyService.lockedTransaction()` (`pg_advisory_xact_lock(hashtext('currency_default'))`) and re-reads the row under the lock: without it, concurrent "make default" requests ended with 2–3 defaults and deadlocks (500). Use the same advisory-lock pattern for any future "only one row may be X" rule.
 - Roles: `SUPERADMIN | ADMIN | ACCOUNTANT | SALES | USER`. The Prisma enum and `src/utils/enum/enum.ts` must stay identical. `SALLES` was renamed to `SALES` in migration `20261119000000_rename_role_salles_to_sales`.
-- **Frontend API docs** live in `doc/weekN/` (`doc/week2/00-overview.txt`: pagination, new error codes, totals), with one `.txt` file per module (`doc/week1/00-overview.txt` is the index plus general rules). Change notes for the frontend live in `doc/FRONTEND_WEEK1_READ_FIRST.txt`, `doc/FRONTEND_WEEK1_UPDATE_2.txt` and `doc/FRONTEND_WEEK1_UPDATE_3.txt` (UPDATE_3 also records decisions for later weeks: roles until Week 5, ADJUSTMENT movement + `reason` on manual stock edit from Week 2, and postponed self-delete / last-SUPERADMIN / freeing employeeId+email guards); add a new `FRONTEND_*` file for each later round of frontend-visible changes, with BEFORE/AFTER examples. `doc/week1` covers the current modules, and `week2`–`week6` are for later work (e.g. purchase/sales invoices go in week2). Whenever an endpoint, DTO or response shape changes, update its doc file in the same change. Docs must describe the **real** behavior (exact response shapes, status codes, Decimals returned as strings), not the intended behavior. `requests.http` has sample requests.
+- **Frontend API docs** live in `doc/weekN/` (`doc/week2/00-overview.txt`: pagination, new error codes, totals), with one `.txt` file per module (`doc/week1/00-overview.txt` is the index plus general rules). Change notes for the frontend: see "Frontend change files" below. `doc/week1` covers the current modules, and `week2`–`week6` are for later work (e.g. purchase/sales invoices go in week2). Whenever an endpoint, DTO or response shape changes, update its doc file in the same change. Docs must describe the **real** behavior (exact response shapes, status codes, Decimals returned as strings), not the intended behavior. `requests.http` has sample requests.
 
 ## Known issues / gotchas
 
@@ -105,7 +111,50 @@ Other scripts: `npm run build` (= `prisma generate && nest build`), `npm run lin
 - Always throw Nest HTTP exceptions (`NotFoundException`, `BadRequestException`…), never a plain `Error`, which becomes a 500.
 - Check that parent rows exist before creating children (e.g. `InventoryService.create` checks the branch), so the client gets a 404 instead of a 500 from the FK error.
 - `UsersService.update` hashes `password` when it is sent. Any new code that writes passwords must use `hashPassword`.
-- `PrismaService` constructor logs `DATABASE_URL` (password included) to stdout.
-- **Not enforced yet (postponed to the end of the project, frontend blocks them):** a user deleting themselves or changing their own role, deleting/demoting the last SUPERADMIN, and freeing `employeeId`/`email` when a user is deleted (a deleted user keeps them → BELONGS_TO_DELETED).
-- Deleting a branch does not touch its employees/warehouses, so `resolveUserBranch` can copy a deleted branch from an active employee of that branch.
 - Locally, `dist/` can come out incomplete because of `incremental` + `deleteOutDir`. If that happens, delete `dist/` and `*.tsbuildinfo` and rebuild.
+
+## Week 2 progress
+
+- The task list is `doc/week2/Week 2 Tasks.pdf`. Do **ONE task per request**: read section 0, section 1 and that task only (they are in Arabic; tables give the Prisma fields, the APIs, the rules and the files). If something is unclear or conflicts with the code, ask before guessing.
+- **Done** (on `dev`): Task 1 setup (`@CurrentUser`, pagination, document totals, 3 error codes), Task 2 numbering (Week 2 enums, `DocumentSequence`, `NumberingService`), Task 3 currency, Task 4 product-units (+ follow-up "lock primary unit once used"), Task 5 stock (`StockMovement`, `StockService`, item card).
+- **Next, in this order:** Task 6 purchase-quotations (WITHOUT convert-to-invoice) → Task 7 purchase-invoices → back to Task 6 convert-to-invoice → Task 8 purchase-returns → Task 9 docs + the big end-to-end test.
+- **The 4 rules of the week:**
+  1. Stock is always counted in the primary unit (convert document lines with `getUnitFactor`).
+  2. Only `StockService` writes `ProductInventory` / `StockMovement`.
+  3. The server computes every total (`src/utils/document/document-totals.ts`); the client sends quantities, prices and percents only.
+  4. A posted document is never edited or deleted, only cancelled (an opposite movement).
+
+## Frontend change files
+
+- Rule: **every task that changes something the frontend sees updates the current FRONTEND file in the same commit** (BEFORE/AFTER examples, suggested Arabic messages, Arabic labels for new keys / enum values).
+- Current file: `doc/FRONTEND_WEEK2_READ_FIRST.txt` (bump its "Last update" line). Week 1 history: `doc/FRONTEND_WEEK1_READ_FIRST.txt`, `doc/FRONTEND_WEEK1_UPDATE_2.txt`, `doc/FRONTEND_WEEK1_UPDATE_3.txt`. Start a new `FRONTEND_WEEKN_READ_FIRST.txt` each week and point to it from `README.md` and `doc/weekN/00-overview.txt`.
+- The module docs in `doc/weekN/*.txt` are updated in the same commit too (see Conventions).
+
+## Postponed — do NOT implement unless asked
+
+This is the only list of known gaps / planned work. Don't add these notes anywhere else.
+
+**Before delivery / production**
+- Remove the temporary `POST /auth/signup` (always creates a SUPERADMIN; marked `// TEMPORARY`).
+- Remove the `console.log` of `DATABASE_URL` in `src/prisma/prisma.service.ts` (prints the DB password).
+- JWT: no `'defaultSecret'` fallback (fail to start without `JWT_SECRET`) and a sane `expiresIn` (today `'3650d'`), in `src/app.module.ts`.
+- Review the suggested Arabic messages in `doc/**` with a native speaker.
+
+**Users and branches**
+- A user deleting themselves or changing their own role; deleting / demoting the last SUPERADMIN (the frontend blocks these for now).
+- Freeing `employeeId` / `email` when a user is deleted (today a deleted user keeps them → 409 BELONGS_TO_DELETED blocks reuse).
+- Deleting a branch that still has active warehouses / employees / users (not blocked; `resolveUserBranch` can then copy a deleted branch from an active employee).
+
+**Products and stock**
+- Deleting a product that still has stock or product units (not blocked; its unit barcodes stay taken).
+- A product-unit barcode can equal another product's barcode (matters for POS scanning, Week 5).
+- ASSEMBLY item type (تجميعي): not supported, waiting for the client's decision.
+
+**Later weeks (planned, not bugs)**
+- Task 7: block deleting a currency used by purchase invoices.
+- Week 4: lock customer / supplier `openingBalance` once they have posted documents.
+- Week 5: real roles per endpoint (today `@Roles(Role.SUPERADMIN)` everywhere); hide `costPrice` from SALES / USER; manual stock edit (`PATCH /product-inventory/:id`) only for SUPERADMIN / ADMIN.
+
+**Design decisions (not bugs, keep them)**
+- Ids in the URL path / query (`?branchId=`) return 404 NOT_FOUND for missing or deleted rows; ids in the body return 400 DOES_NOT_EXIST.
+- `NumberingService.next()` takes the year in UTC: always pass the document date (a `@db.Date`), never `new Date()`.
