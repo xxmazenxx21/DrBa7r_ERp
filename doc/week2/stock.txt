@@ -1,0 +1,200 @@
+Stock & Item Card API Documentation (المخزن وكارت الصنف)
+========================================================
+
+Base URL
+--------
+Production:      https://drba7rerp-production.up.railway.app
+Local (Docker):  http://localhost:3000
+
+Authentication & access
+-----------------------
+All endpoints require:  Authorization: Bearer <access_token>   (see doc/week1/auth.txt)
+Only SUPERADMIN can call them:
+  - no / invalid token  -> 401 { "statusCode": 401, "message": "Unauthorized", "error": "Unauthorized", "code": "UNAUTHORIZED", "field": null }
+  - other roles         -> 403 { "statusCode": 403, "message": "You do not have the required roles to access this resource", "error": "Forbidden", "code": "FORBIDDEN", "field": null }
+
+Response shape: every success is { "message": "...", "data": ... }
+Every error has { statusCode, message, error, code, field } (see doc/week1/00-overview.txt)
+Numbers are RETURNED as strings ("100", "-10", "10.6818").
+
+What is it?
+-----------
+  ProductInventory (/product-inventory)  says "how many do you have NOW"
+                                          (quantity + average cost).
+  StockMovement    (/stock-movements)    says "how did you get to that
+                                          number": ONE line for every stock in
+                                          or out. All lines of a product in a
+                                          warehouse, in order = the ITEM CARD
+                                          (كارت الصنف).
+
+Rules:
+  - quantity of a product in a warehouse = the SUM of its movements, always.
+  - Movements are NEVER edited or deleted. A mistake is fixed with a new,
+    opposite movement.
+  - Quantities are always in the PRIMARY unit (pieces): buying 10 cartons of
+    12 = a movement of +120.
+  - Nobody creates a movement by hand: there is NO POST here. Movements come
+    from documents (purchase invoices / returns, later this week) and from
+    /product-inventory (opening balance and manual adjustment).
+  - SERVICE products never have stock.
+
+Average cost (متوسط التكلفة المرجح)
+-----------------------------------
+  Stock IN (purchase):   new average = (old qty x old average + in qty x in cost)
+                                       / (old qty + in qty)
+  Stock OUT (return...): the average does NOT change.
+  Example: 100 pieces @ 10, then buy 120 @ 11.25 -> 220 @ 10.6818,
+           then return 24 -> 196 @ 10.6818.
+
+Movement types (type)
+---------------------
+  OPENING                 رصيد افتتاحي        POST /product-inventory (and Week 1 stock, see below)
+  ADJUSTMENT              تسوية               PATCH / DELETE /product-inventory
+  PURCHASE                شراء                posting a purchase invoice (later task)
+  PURCHASE_CANCEL         إلغاء فاتورة شراء    cancelling a posted invoice (later task)
+  PURCHASE_RETURN         مرتجع شراء           posting a purchase return (later task)
+  PURCHASE_RETURN_CANCEL  إلغاء مرتجع شراء     cancelling a posted return (later task)
+
+Movement object (Arabic label = what the screen shows)
+-----------------------------------------------------
+{
+  "id": "cmx1move0001",
+  "movementDate": "2026-11-24T10:00:00.000Z",  تاريخ الحركة
+  "type": "ADJUSTMENT",                          نوع الحركة
+  "productId": "cmx1product01",                  الصنف
+  "warehouseId": "cmx1inventory01",              المخزن (an /inventory id)
+  "quantity": "-10",                             الكمية: + in, - out (pieces)
+  "unitCost": "10",                              تكلفة القطعة
+  "totalCost": "-100",                           إجمالي التكلفة = quantity x unitCost (2 decimals)
+  "balanceAfter": "90",                          الرصيد بعد الحركة
+  "avgCostAfter": "10",                          متوسط التكلفة بعد الحركة
+  "sourceType": null,                            نوع المستند: PQ / PI / PR, null for OPENING / ADJUSTMENT
+  "sourceId": null,                              the document id
+  "sourceLineId": null,                          the document line id
+  "sourceCode": null,                            رقم المستند, e.g. "PI-2026-000001"
+  "reason": "جرد",                               السبب (adjustments)
+  "createdBy": "cmx1user01",                     بواسطة (the logged-in user)
+  "createdDate": "2026-11-24T10:00:00.000Z",     تاريخ التسجيل
+  "createdByUser": { "id": "cmx1user01", "username": "admin" }
+}
+A cost-only change (same quantity, new cost) is a movement with quantity "0".
+
+---------------------------------------------------------
+STOCK APIs (read only)
+---------------------------------------------------------
+
+1) List movements
+   Method: GET
+   URL: /stock-movements
+   Description: Movements, NEWEST first, PAGINATED (see doc/week2/00-overview.txt).
+
+   Query (all optional):
+   - productId    only this product
+   - warehouseId  only this warehouse
+   - type         one of the movement types above
+   - dateFrom     "2026-11-01" or a full ISO date-time (inclusive)
+   - dateTo       "2026-11-30" = up to the END of that day (inclusive)
+   - page, pageSize
+   An id that matches nothing just gives an empty list.
+   A bad type / date / page, or an unknown parameter -> 400 VALIDATION_FAILED.
+
+   Request Example:
+   GET /stock-movements?productId=cmx1product01&type=ADJUSTMENT&page=1&pageSize=20
+
+   Response Example (200):
+   {
+     "message": "Stock movements returned successfully",
+     "data": {
+       "items": [
+         {
+           ...movement object,
+           "product": { "id": "cmx1product01", "code": "PRD-123456", "name": "فرشة" },
+           "warehouse": { "id": "cmx1inventory01", "name": "مخزن المعادي" },
+           "createdByUser": { "id": "cmx1user01", "username": "admin" }
+         }
+       ],
+       "meta": { "page": 1, "pageSize": 20, "total": 1, "totalPages": 1 }
+     }
+   }
+
+   Error Response (400 - bad filter):
+   { "statusCode": 400, "message": ["type must be one of the following values: OPENING, ADJUSTMENT, PURCHASE, PURCHASE_CANCEL, PURCHASE_RETURN, PURCHASE_RETURN_CANCEL"], "error": "Bad Request", "code": "VALIDATION_FAILED", "field": "type" }
+
+2) Item card (كارت الصنف)
+   Method: GET
+   URL: /stock-movements/item-card?productId=...&warehouseId=...
+   Description: ONE product in ONE warehouse: every movement OLDEST first
+                (read it top to bottom like a paper card), each with the
+                balance after it, plus the current quantity and average cost.
+                Both parameters are REQUIRED. Not paginated.
+                Works for deleted products / warehouses too (history is kept).
+
+   Response Example (200) - brush: 100 @ 10 added, then counted 90:
+   {
+     "message": "Item card returned successfully",
+     "data": {
+       "product": { "id": "cmx1product01", "code": "PRD-123456", "name": "فرشة" },
+       "warehouse": { "id": "cmx1inventory01", "name": "مخزن المعادي" },
+       "quantity": "90",                 <-- now (= last balanceAfter)
+       "avgCost": "10",                  <-- now
+       "movements": [
+         { ...movement, "type": "OPENING",    "quantity": "100", "balanceAfter": "100", "reason": null },
+         { ...movement, "type": "ADJUSTMENT", "quantity": "-10", "balanceAfter": "90",  "reason": "جرد" }
+       ]
+     }
+   }
+   A product that was never in that warehouse: "quantity": "0", "avgCost": "0",
+   "movements": [].
+
+   Error Responses:
+   - 400 missing productId / warehouseId
+     { "statusCode": 400, "message": ["productId should not be empty", "productId must be a string", "warehouseId should not be empty", "warehouseId must be a string"], "error": "Bad Request", "code": "VALIDATION_FAILED", "field": "productId" }
+     (both missing; only the missing one is listed otherwise)
+   - 404 { "statusCode": 404, "message": "Product with ID xxx not found", "error": "Not Found", "code": "NOT_FOUND", "field": null }
+   - 404 { "statusCode": 404, "message": "Inventory with id xxx not found", "error": "Not Found", "code": "NOT_FOUND", "field": null }
+
+---------------------------------------------------------
+What changed in /product-inventory (doc/week1/product-inventory.txt)
+---------------------------------------------------------
+  API                                   before (Week 1)               now (Week 2)
+  ------------------------------------  ----------------------------  ------------------------------------------
+  POST /product-inventory/inventory/:id  created the row with the       same response; also writes an OPENING
+                                        quantity and cost             movement (رصيد افتتاحي)
+  PATCH /product-inventory/:id           changed quantity / cost       writes an ADJUSTMENT movement with the
+                                        directly                      difference; "reason" REQUIRED if
+                                                                      something changes  (BREAKING)
+  DELETE /product-inventory/:id          soft delete                   stock -> 0 first (ADJUSTMENT, reason
+                                                                      "حذف الصنف من المخزن"), then soft delete
+  SERVICE product                       accepted                      400 "Service items (SERVICE) have no stock"
+
+BEFORE:  PATCH /product-inventory/:id { "quantity": 90 }                   -> 200
+AFTER:   PATCH /product-inventory/:id { "quantity": 90 }                   -> 400
+         { "statusCode": 400, "message": ["reason is required when quantity or costPrice changes"], "error": "Bad Request", "code": "VALIDATION_FAILED", "field": "reason" }
+         PATCH /product-inventory/:id { "quantity": 90, "reason": "جرد" }  -> 200
+
+Also: PATCH /products/:id refuses itemType "SERVICE" while the product is in
+a warehouse (400, field itemType). Remove it from the warehouses first.
+
+Old (Week 1) stock
+------------------
+Stock that existed before this update got ONE OPENING movement each, with
+reason "Week 1 opening balance", so every item card adds up from day one.
+
+Errors from stock changes (later tasks will show them on documents)
+--------------------------------------------------------------------
+  INSUFFICIENT_STOCK (400, field quantity): taking out more than the warehouse has
+    { "statusCode": 400, "message": "Insufficient stock: available 196, requested 197", "error": "Bad Request", "code": "INSUFFICIENT_STOCK", "field": "quantity" }
+    Arabic: الكمية المتاحة في المخزن غير كافية
+
+Suggested Arabic messages
+-------------------------
+  VALIDATION_FAILED + field reason    سبب التسوية مطلوب عند تغيير الكمية أو التكلفة
+  BAD_REQUEST + field productId       الأصناف الخدمية ليس لها مخزون
+  BAD_REQUEST + field itemType        لا يمكن تحويل الصنف لخدمي وهو موجود في مخزن
+
+Suggested UI
+------------
+  - Item card screen: pick product + warehouse, show the table top to bottom:
+    date, type (Arabic label), document number (sourceCode), in (+), out (-),
+    balance, average cost, reason, user.
+  - Stock edit dialog (PATCH): add a required "السبب" text box.

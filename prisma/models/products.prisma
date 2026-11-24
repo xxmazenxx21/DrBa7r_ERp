@@ -30,6 +30,7 @@ model Product {
   deletedAt          DateTime?
   productInventories ProductInventory[]
   units              ProductUnit[]
+  stockMovements     StockMovement[]
 }
 
 model ProductInventory {

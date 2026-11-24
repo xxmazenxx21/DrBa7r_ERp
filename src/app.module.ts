@@ -17,6 +17,7 @@ import { AuthModule } from './auth/auth.module';
 import { NumberingModule } from './numbering/numbering.module';
 import { CurrencyModule } from './currency/currency.module';
 import { ProductUnitsModule } from './product-units/product-units.module';
+import { StockModule } from './stock/stock.module';
 import { JwtModule } from '@nestjs/jwt';
 import { APP_GUARD } from '@nestjs/core';
 import { AuthGuard } from './guards/auth.guard';
@@ -49,6 +50,7 @@ import { RolesGuard } from './guards/roles.guard';
     NumberingModule,
     CurrencyModule,
     ProductUnitsModule,
+    StockModule,
   ],
   controllers: [AppController],
   providers: [

@@ -221,6 +221,9 @@ PRODUCTS APIs
    - 404 same as Get Product By ID
    - 400 new categoryId / primaryItemUnitId does not exist or is deleted (same body as Create)
    - 409 barcode used by another active or deleted product (same bodies as Create)
+   - 400 itemType "SERVICE" while the product is still in a warehouse (Week 2)
+     { "statusCode": 400, "message": "itemType can't be SERVICE while the product is in a warehouse; remove it from the warehouses first", "error": "Bad Request", "code": "BAD_REQUEST", "field": "itemType" }
+     (DELETE its /product-inventory records first)
    - 400 primaryItemUnitId is already one of this product's other units (Week 2)
      { "statusCode": 400, "message": "primaryItemUnitId is already one of the product's units; delete that product unit first", "error": "Bad Request", "code": "BAD_REQUEST", "field": "primaryItemUnitId" }
 

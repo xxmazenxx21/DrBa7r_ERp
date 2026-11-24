@@ -19,6 +19,7 @@ Files in this folder
   numbering.txt     document numbers (PI-2026-000001) + Week 2 enum values (Arabic labels)
   currency.txt      /currency  (currencies + the default currency)
   product-units.txt /products/:productId/units, /product-units/:id  (carton = 12 pieces)
+  stock.txt         /stock-movements, /stock-movements/item-card  (item card) + what changed in /product-inventory
 
 
 Pagination (every NEW Week 2 list)

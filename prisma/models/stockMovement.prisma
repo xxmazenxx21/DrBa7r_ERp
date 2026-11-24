@@ -1,0 +1,30 @@
+// حركة مخزن: ONE line for every stock in / out. All lines of a product in a
+// warehouse, in order = its item card (كارت الصنف).
+// Written ONLY by StockService. Never updated, never deleted (no deletedAt):
+// a mistake is fixed with an opposite movement.
+// Rule: ProductInventory.quantity = SUM(quantity) of its movements.
+model StockMovement {
+  id            String            @id @default(cuid())
+  movementDate  DateTime          @default(now()) // تاريخ الحركة
+  type          StockMovementType // نوع الحركة
+  productId     String // الصنف
+  product       Product           @relation(fields: [productId], references: [id])
+  warehouseId   String // المخزن (the Inventory model)
+  warehouse     Inventory         @relation(fields: [warehouseId], references: [id])
+  quantity      Decimal           @db.Decimal(18, 4) // الكمية: + in / - out, always in the primary unit
+  unitCost      Decimal           @db.Decimal(18, 4) // تكلفة القطعة
+  totalCost     Decimal           @db.Decimal(18, 2) // إجمالي التكلفة = quantity x unitCost
+  balanceAfter  Decimal           @db.Decimal(18, 4) // الرصيد بعد الحركة
+  avgCostAfter  Decimal           @db.Decimal(18, 4) // متوسط التكلفة بعد الحركة
+  sourceType    DocumentType? // نوع المستند (empty for OPENING / ADJUSTMENT)
+  sourceId      String? // document id
+  sourceLineId  String? // document line id
+  sourceCode    String? // رقم المستند: PI-2026-000001
+  reason        String?           @db.VarChar(250) // السبب (adjustments)
+  createdBy     String // بواسطة (from the token)
+  createdByUser User              @relation(fields: [createdBy], references: [id])
+  createdDate   DateTime          @default(now()) // تاريخ التسجيل
+
+  @@index([productId, warehouseId, movementDate])
+  @@index([sourceType, sourceId])
+}

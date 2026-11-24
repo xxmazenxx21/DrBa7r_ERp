@@ -25,6 +25,7 @@ model User {
   postedInvoices   PurchaseInvoice[] @relation("PostedInvoices")
   createdInvoices  PurchaseInvoice[] @relation("CreatedInvoices")
   modifiedInvoices PurchaseInvoice[] @relation("ModifiedInvoices")
+  stockMovements   StockMovement[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt

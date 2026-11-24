@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ErrorCode, errorBody } from '../utils/errors/error-codes';
+import { ItemType } from '../utils/enum/enum';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -86,7 +87,26 @@ export class ProductsService {
   }
 
   async update(id: string, dto: UpdateProductDto) {
-    await this.findOne(id);
+    const { data: current } = await this.findOne(id);
+    if (
+      dto.itemType === ItemType.SERVICE &&
+      current.itemType !== ItemType.SERVICE
+    ) {
+      // Services have no stock: can't become SERVICE while still in a warehouse.
+      const stockRows = await this.prisma.productInventory.count({
+        where: { productId: id, deletedAt: null },
+      });
+      if (stockRows > 0) {
+        throw new BadRequestException(
+          errorBody(
+            400,
+            "itemType can't be SERVICE while the product is in a warehouse; remove it from the warehouses first",
+            ErrorCode.BAD_REQUEST,
+            'itemType',
+          ),
+        );
+      }
+    }
     await this.assertRefs(dto.categoryId, dto.primaryItemUnitId);
     if (dto.primaryItemUnitId !== undefined) {
       // A unit can't be the primary one (factor 1) AND another unit (factor 12).

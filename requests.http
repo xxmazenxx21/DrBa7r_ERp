@@ -203,6 +203,8 @@ Authorization: Bearer {{token}}
 }
 
 ### Put the product in the Cairo warehouse (route is /product-inventory)
+# Week 2: also writes an OPENING stock movement (رصيد افتتاحي)
+# @name createStock
 @cairoInventoryId = {{createCairoInventory.response.body.data.id}}
 POST {{baseUrl}}/product-inventory/inventory/{{cairoInventoryId}}
 Content-Type: application/json
@@ -367,4 +369,23 @@ Authorization: Bearer {{token}}
 
 ### Delete the unit (POST it again later -> restored)
 DELETE {{baseUrl}}/product-units/{{createCartonUnit.response.body.data.id}}
+Authorization: Bearer {{token}}
+
+### Stock count: Cairo stock 100 -> 90. "reason" is REQUIRED when quantity/cost changes
+# Writes an ADJUSTMENT movement of -10
+PATCH {{baseUrl}}/product-inventory/{{createStock.response.body.data.id}}
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "quantity": 90,
+  "reason": "جرد"
+}
+
+### Item card (كارت الصنف): OPENING +100, then ADJUSTMENT -10 (جرد), balance 90
+GET {{baseUrl}}/stock-movements/item-card?productId={{createProduct.response.body.data.id}}&warehouseId={{cairoInventoryId}}
+Authorization: Bearer {{token}}
+
+### All movements, newest first (filters: productId, warehouseId, type, dateFrom, dateTo; paginated)
+GET {{baseUrl}}/stock-movements?type=ADJUSTMENT&page=1&pageSize=20
 Authorization: Bearer {{token}}
