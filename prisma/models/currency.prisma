@@ -1,7 +1,9 @@
 model Currency {
   id               String            @id @default(cuid())
-  name             String
-  code             String            @unique
+  name             String // اسم العملة: جنيه مصري
+  code             String            @unique // كود العملة: EGP / USD (sent by the user, 3 capital letters)
+  symbol           String? // الرمز: ج.م / $ (optional)
+  isDefault        Boolean           @default(false) // العملة الأساسية: only ONE active currency is true
   purchaseInvoices PurchaseInvoice[]
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt

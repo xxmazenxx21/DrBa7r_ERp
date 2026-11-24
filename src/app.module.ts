@@ -14,6 +14,8 @@ import { SupplierModule } from './supplier/supplier.module';
 import { EmployeesModule } from './employees/employees.module';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
+import { NumberingModule } from './numbering/numbering.module';
+import { CurrencyModule } from './currency/currency.module';
 import { JwtModule } from '@nestjs/jwt';
 import { APP_GUARD } from '@nestjs/core';
 import { AuthGuard } from './guards/auth.guard';
@@ -43,6 +45,8 @@ import { RolesGuard } from './guards/roles.guard';
     EmployeesModule,
     UsersModule,
     AuthModule,
+    NumberingModule,
+    CurrencyModule,
   ],
   controllers: [AppController],
   providers: [

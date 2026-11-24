@@ -1,0 +1,59 @@
+Numbering + Week 2 enums
+========================
+
+No endpoints here. This file explains two things you will SEE in the
+Week 2 documents (quotations, invoices, returns): the document number and the
+enum values.
+
+
+Document numbers (رقم المستند)
+------------------------------
+Every document gets a sequential number from the server. You never send it.
+
+    <type>-<year>-<6 digits>
+
+    PQ-2026-000001   first purchase quotation of 2026   (عرض سعر شراء)
+    PI-2026-000001   first purchase invoice of 2026     (فاتورة شراء)
+    PR-2026-000001   first purchase return of 2026      (مرتجع شراء)
+
+- One counter per type per year: PI and PQ count separately, and every type
+  starts again from 000001 on January 1st.
+- The year comes from the document date (e.g. invoiceDate), not "today".
+- Numbers have no gaps: if creating a document fails, its number is not
+  used up. Two documents created at the same time never get the same number.
+- Unlike the Week 1 codes (PRD-123456, random), these are in order, because
+  accountants and the tax authority need a sequence.
+
+
+Enum values (send / receive the TEXT value)
+-------------------------------------------
+DocumentStatus   (invoices, returns)
+    DRAFT      مسودة   saved, no effect yet, can be edited / deleted
+    POSTED     مُرحّل   final: stock moved, can't be edited or deleted
+    CANCELLED  ملغي    the posting was reversed; the document stays, marked cancelled
+
+PaymentType
+    CASH       نقدي
+    CREDIT     آجل
+
+QuotationStatus  (purchase quotations)
+    DRAFT      مسودة
+    SENT       مُرسل
+    ACCEPTED   مقبول
+    REJECTED   مرفوض
+    CONVERTED  تم التحويل لفاتورة
+
+DocumentType  (the prefix of the number)
+    PQ         عرض سعر شراء
+    PI         فاتورة شراء
+    PR         مرتجع شراء
+
+StockMovementType  (item card / كارت الصنف lines)
+    OPENING                 رصيد افتتاحي
+    ADJUSTMENT              تسوية
+    PURCHASE                شراء
+    PURCHASE_CANCEL         إلغاء فاتورة شراء
+    PURCHASE_RETURN         مرتجع شراء
+    PURCHASE_RETURN_CANCEL  إلغاء مرتجع شراء
+
+The modules that use them will show where each one appears.

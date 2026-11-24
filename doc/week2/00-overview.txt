@@ -1,0 +1,90 @@
+ERP API - Week 2 Overview
+=========================
+
+Week 2 adds purchasing: currencies, product units, stock movements, purchase
+quotations, purchase invoices and purchase returns. One .txt file per module
+in this folder. Everything in doc/week1/00-overview.txt still applies
+(login, SUPERADMIN only, { message, data }, soft delete, error shape,
+decimal limits, null clears nullable fields).
+
+Base URL
+--------
+Production:      https://drba7rerp-production.up.railway.app
+Local (Docker):  http://localhost:3000
+
+
+Files in this folder
+--------------------
+  00-overview.txt   this file: pagination, new error codes, how totals are computed
+  numbering.txt     document numbers (PI-2026-000001) + Week 2 enum values (Arabic labels)
+  currency.txt      /currency  (currencies + the default currency)
+
+
+Pagination (every NEW Week 2 list)
+----------------------------------
+Lists that can grow (documents, movements) are paginated. Query string:
+
+    ?page=1&pageSize=20
+
+    page      optional, whole number >= 1        (default 1)
+    pageSize  optional, whole number 1 to 100    (default 20)
+    anything else (0, 101, 1.5, "abc", unknown params) -> 400 VALIDATION_FAILED
+      { "statusCode": 400, "message": ["pageSize must not be greater than 100"], "error": "Bad Request", "code": "VALIDATION_FAILED", "field": "pageSize" }
+
+Response: "data" is NOT an array here, it is an object:
+
+{
+  "message": "...",
+  "data": {
+    "items": [ ... ],                 <-- the records of this page
+    "meta": {
+      "page": 1,
+      "pageSize": 20,
+      "total": 57,                    <-- records in ALL pages
+      "totalPages": 3                 <-- 0 when there are no records
+    }
+  }
+}
+
+A page after the last one returns "items": [] (not an error).
+Each module file says if its list is paginated. Week 1 lists are NOT
+paginated (they still return a plain array), and small lists like
+GET /currency are not either.
+
+
+New error codes (Week 2)
+------------------------
+Same error shape as always: { statusCode, message, error, code, field }.
+Three new codes for documents and stock:
+
+  code                 status  when                                          suggested Arabic message
+  -------------------  ------  --------------------------------------------  ---------------------------------------------
+  INVALID_STATUS       409     the action is not allowed in the document's   لا يمكن تنفيذ العملية في حالة المستند الحالية
+                               current status (e.g. posting an invoice that
+                               is already posted)
+  INSUFFICIENT_STOCK   400     not enough quantity in the warehouse          الكمية المتاحة في المخزن غير كافية
+                               (a return, or cancelling an invoice)
+  QUANTITY_EXCEEDED    400     returning more than was bought                الكمية أكبر من المسموح بإرجاعه
+
+The modules that use them will show exact bodies.
+The full list of codes is in doc/week1/00-overview.txt (+ these three).
+
+
+Totals are computed by the server
+---------------------------------
+For quotations, invoices and returns the frontend sends ONLY quantities,
+prices and percents. The server computes every total:
+
+    line total    = quantity x price - line discount
+    subTotal      = sum of the line totals
+    discountValue = subTotal x discountPercent / 100
+                    (or the discountValue you send, if you send no percent)
+    taxValue      = (subTotal - discountValue) x taxPercent / 100
+    netTotal      = subTotal - discountValue + taxValue
+
+Example: 10 cartons x 150, discount 10%, tax 14%
+    subTotal 1500, discountValue 150, taxValue 189, netTotal 1539
+
+Line totals keep 4 decimals, document totals 2 (rounded half up).
+A discount percent outside 0-100, a tax percent outside 0-100, or a discount
+value bigger than the amount -> 400 BAD_REQUEST (field = that field).

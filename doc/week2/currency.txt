@@ -1,0 +1,199 @@
+Currency API Documentation (العملات)
+====================================
+
+Base URL
+--------
+Production:      https://drba7rerp-production.up.railway.app
+Local (Docker):  http://localhost:3000
+
+Authentication & access
+-----------------------
+All endpoints require:  Authorization: Bearer <access_token>   (see doc/week1/auth.txt)
+Only SUPERADMIN can call them:
+  - no / invalid token  -> 401 { "statusCode": 401, "message": "Unauthorized", "error": "Unauthorized", "code": "UNAUTHORIZED", "field": null }
+  - other roles         -> 403 { "statusCode": 403, "message": "You do not have the required roles to access this resource", "error": "Forbidden", "code": "FORBIDDEN", "field": null }
+
+Response shape: every success is { "message": "...", "data": ... }
+Every error has { statusCode, message, error, code, field } (see doc/week1/00-overview.txt)
+Unknown fields in a body -> 400 "property <name> should not exist"
+Delete is a SOFT delete (record hidden, kept in the database).
+
+What is it?
+-----------
+If the company buys in dollars, the invoice is saved in dollars together with
+the exchange rate, and the stock is always saved in the DEFAULT currency
+(usually EGP). If the company only uses Egyptian pounds: create EGP, make it
+the default, and that's it.
+
+THE DEFAULT CURRENCY (العملة الأساسية)
+  - At most ONE currency is the default (isDefault: true).
+  - Making a currency the default automatically makes the old default false
+    (in the same step, there is never a moment with two defaults).
+  - Once a default exists there is always one: you can't delete it and you
+    can't set it to false. To change it, make ANOTHER currency the default.
+  - A new currency is NOT the default unless you send "isDefault": true.
+
+Fields (Arabic label = what the screen shows)
+---------------------------------------------
+  field       Arabic            who fills it   notes
+  ----------  ----------------  -------------  -------------------------------------
+  id          -                 server
+  code        كود العملة         user           EGP / USD. Exactly 3 CAPITAL letters
+                                               (ISO code). Unique. YOU send it
+                                               (the only module where you send "code").
+  name        اسم العملة         user           جنيه مصري
+  symbol      الرمز              user, optional ج.م / $   (null clears it)
+  isDefault   العملة الأساسية    user, optional true / false, default false
+  createdAt / updatedAt / deletedAt   server
+
+Currency object (what "data" contains)
+--------------------------------------
+{
+  "id": "cmx1currency001",
+  "name": "جنيه مصري",
+  "code": "EGP",
+  "symbol": "ج.م",
+  "isDefault": true,
+  "createdAt": "2026-11-24T10:00:00.000Z",
+  "updatedAt": "2026-11-24T10:00:00.000Z",
+  "deletedAt": null
+}
+
+---------------------------------------------------------
+CURRENCY APIs
+---------------------------------------------------------
+
+1) Create Currency
+   Method: POST
+   URL: /currency
+
+   Validation Rules:
+   - code: required, exactly 3 capital letters A-Z (e.g. "EGP", "USD").
+           Spaces around it are removed. "egp" -> 400 (send capitals).
+   - name: required string, not empty
+   - symbol: optional string (not empty)
+   - isDefault: optional boolean (default false). null -> 400.
+
+   Request Example:
+   {
+     "code": "EGP",
+     "name": "جنيه مصري",
+     "symbol": "ج.م",
+     "isDefault": true
+   }
+
+   Response Example (201):
+   {
+     "message": "Currency created successfully",
+     "data": { ...currency object }
+   }
+   If "isDefault": true, every other currency is now isDefault false
+   (reload the list).
+
+   Error Responses:
+   - 400 bad code
+     { "statusCode": 400, "message": ["code must be exactly 3 capital letters (ISO code, e.g. EGP, USD)"], "error": "Bad Request", "code": "VALIDATION_FAILED", "field": "code" }
+   - 400 other validation / unknown field
+     { "statusCode": 400, "message": ["name should not be empty"], "error": "Bad Request", "code": "VALIDATION_FAILED", "field": "name" }
+   - 409 code used by an ACTIVE currency
+     { "statusCode": 409, "message": "code already exists", "error": "Conflict", "code": "ALREADY_EXISTS", "field": "code" }
+   - 409 code used by a DELETED currency (it is NOT restored)
+     { "statusCode": 409, "message": "code belongs to a deleted currency", "error": "Conflict", "code": "BELONGS_TO_DELETED", "field": "code" }
+
+2) Get All Currencies
+   Method: GET
+   URL: /currency
+   Description: All active (not deleted) currencies. The default one FIRST,
+                then the others by code (A-Z). NOT paginated (plain array).
+                Empty list -> "data": []
+
+   Response Example:
+   {
+     "message": "All currencies returned successfully",
+     "data": [ { ...EGP, "isDefault": true }, { ...USD, "isDefault": false } ]
+   }
+
+3) Get Currency By ID
+   Method: GET
+   URL: /currency/:id
+
+   Response Example:
+   {
+     "message": "Currency returned successfully",
+     "data": { ...currency object }
+   }
+
+   Error Response (404 - not found or deleted):
+   {
+     "statusCode": 404,
+     "message": "Currency with id cmx1currency001 not found",
+     "error": "Not Found",
+     "code": "NOT_FOUND",
+     "field": null
+   }
+
+4) Update Currency
+   Method: PATCH
+   URL: /currency/:id
+   Description: Partial update. Fields (all optional): code, name, symbol,
+                isDefault. Same rules as Create.
+                "symbol": null CLEARS the symbol. null on code / name /
+                isDefault -> 400.
+
+   Request Example (make USD the default -> EGP becomes false by itself):
+   PATCH /currency/<usd id>
+   {
+     "isDefault": true
+   }
+
+   Response Example:
+   {
+     "message": "Currency updated successfully",
+     "data": { ...updated currency object }
+   }
+
+   Error Responses:
+   - 404 same as Get Currency By ID
+   - 400 "isDefault": false on the DEFAULT currency
+     {
+       "statusCode": 400,
+       "message": "The default currency cannot be unset; make another currency the default instead",
+       "error": "Bad Request",
+       "code": "BAD_REQUEST",
+       "field": "isDefault"
+     }
+     ("isDefault": false on a currency that is not the default is fine.)
+   - 400 / 409 for code, same bodies as Create
+
+5) Delete Currency
+   Method: DELETE
+   URL: /currency/:id
+   Description: Soft delete (sets deletedAt).
+
+   Response Example:
+   {
+     "message": "Currency deleted successfully",
+     "data": null
+   }
+
+   Error Responses:
+   - 404 same as Get Currency By ID
+   - 400 deleting the DEFAULT currency
+     {
+       "statusCode": 400,
+       "message": "The default currency cannot be deleted; make another currency the default first",
+       "error": "Bad Request",
+       "code": "BAD_REQUEST",
+       "field": "isDefault"
+     }
+
+Suggested Arabic messages
+-------------------------
+  BAD_REQUEST + field isDefault (delete)  لا يمكن حذف العملة الأساسية، اجعل عملة أخرى أساسية أولًا
+  BAD_REQUEST + field isDefault (unset)   لا يمكن إلغاء العملة الأساسية، اجعل عملة أخرى أساسية بدلًا منها
+  VALIDATION_FAILED + field code          كود العملة 3 حروف إنجليزية كبيرة (مثل EGP)
+  ALREADY_EXISTS + field code             كود العملة مستخدم بالفعل
+  BELONGS_TO_DELETED + field code         كود العملة مرتبط بعملة محذوفة
+
+Suggested UI: in the list, show a "أساسية" badge on the default currency and
+hide its delete button; "make default" is a button on the other rows.

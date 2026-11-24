@@ -1,0 +1,11 @@
+// عدّاد المستندات: one counter per document type per year.
+// Only NumberingService.next() writes here (PI-2026-000001, PI-2026-000002 ...).
+model DocumentSequence {
+  id         String       @id @default(cuid())
+  docType    DocumentType // نوع المستند: PQ / PI / PR
+  year       Int // السنة (from the document date)
+  lastNumber Int          @default(0) // آخر رقم
+  updatedAt  DateTime     @updatedAt // آخر تحديث
+
+  @@unique([docType, year])
+}

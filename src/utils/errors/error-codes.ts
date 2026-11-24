@@ -14,6 +14,10 @@ export const ErrorCode = {
   FORBIDDEN: 'FORBIDDEN',
   BAD_REQUEST: 'BAD_REQUEST',
   INTERNAL_ERROR: 'INTERNAL_ERROR',
+  // Week 2 (documents and stock):
+  INVALID_STATUS: 'INVALID_STATUS', // 409: action not allowed in the document's current status
+  INSUFFICIENT_STOCK: 'INSUFFICIENT_STOCK', // 400: not enough quantity in the warehouse
+  QUANTITY_EXCEEDED: 'QUANTITY_EXCEEDED', // 400: returning more than was bought
 } as const;
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
 
