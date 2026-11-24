@@ -4,8 +4,9 @@ FRONTEND - READ THIS FIRST (Week 2 backend changes)
 >>> This file is updated with every Week 2 task. Check the "Last update" line
 >>> below after every pull.
 
-Last update: Week 2 Tasks 1-6 (setup, numbering, currency, product units,
-stock, purchase quotations without convert-to-invoice) + "primary unit lock".
+Last update: Week 2 Tasks 1-7 (setup, numbering, currency, product units,
+stock, purchase quotations, purchase invoices) + "primary unit lock".
+convert-to-invoice is NOT in yet.
 
 
 0. Get the new backend (IMPORTANT)
@@ -85,7 +86,8 @@ PART 1 - NEW IN WEEK 2 (what exists so far)
                                         "items": [ ... ],
                                         "meta": { "page": 1, "pageSize": 20, "total": 57, "totalPages": 3 }
                                       }
-  Paginated so far: GET /stock-movements, GET /purchase-quotations.
+  Paginated so far: GET /stock-movements, GET /purchase-quotations,
+  GET /purchase-invoices.
   (GET /currency is a plain array.)
 
 1.5 Document numbers
@@ -107,7 +109,28 @@ PART 1 - NEW IN WEEK 2 (what exists so far)
   No effect on stock or money. The server computes every total: send only
   quantities, prices and percents. Example: 10 cartons x 150, discount 10%,
   tax 14% -> subTotal 1500, discountValue 150, taxValue 189, netTotal 1539.
-  convert-to-invoice comes with purchase invoices (next task).
+  convert-to-invoice (quotation -> invoice) comes right after purchase invoices.
+
+1.6b Purchase invoices (فواتير الشراء)  - doc/week2/purchase-invoices.txt
+-----------------------------------------------------------------------
+    POST   /purchase-invoices                 new DRAFT invoice with its lines
+    GET    /purchase-invoices                 list (PAGINATED; filters supplierId,
+                                              branchId, warehouseId, status,
+                                              paymentType, dateFrom, dateTo, search)
+    GET    /purchase-invoices/:id             header + lines
+    PATCH  /purchase-invoices/:id             edit (DRAFT only; "lines" REPLACES all)
+    DELETE /purchase-invoices/:id             soft delete (DRAFT only)
+    POST   /purchase-invoices/:id/post        ترحيل: DRAFT -> POSTED, stock goes UP
+    POST   /purchase-invoices/:id/cancel      إلغاء: POSTED -> CANCELLED, stock goes DOWN
+    GET    /purchase-invoices/:id/returnable  per line: bought / returned / remaining
+  Same lines as quotations, but "unitCost" (not unitPrice), plus optional
+  batchNumber and expiryDate (REQUIRED for products with hasExpiryDate).
+  Payment: CASH -> paid = net; CREDIT -> paidAmount 0..net (default 0).
+  Currency: not sent -> the default one (rate 1); another currency needs
+  exchangeRate. A POSTED invoice can't be edited or deleted, only cancelled.
+  Example: 10 cartons x 150, discount 10%, tax 14%, CREDIT paid 500 ->
+  net 1539, remaining 1039; after POST the warehouse has 220 brushes at an
+  average of 10.6818; POST again -> 409 INVALID_STATUS.
 
 1.7 Errors inside document lines: "field" is the line path   -> new
 ---------------------------------------------------------------------
@@ -179,6 +202,13 @@ AFTER:   -> 400 if the product has ANY stock movement (ever) or ANY active
   /products/:productId/units with the primary itemUnitId -> 400, field itemUnitId).
   Arabic: هذه هي الوحدة الأساسية للصنف (معاملها 1) ولا يمكن إضافتها مرة أخرى
 
+2.4b A currency used by purchase invoices can't be deleted       -> BREAKING
+---------------------------------------------------------------------------
+BEFORE:  DELETE /currency/:id   -> 200 (if it is not the default)
+AFTER:   -> 400 while any (not deleted) purchase invoice uses it
+         { "statusCode": 400, "message": "Currency is used by 1 purchase invoice(s) and cannot be deleted", "error": "Bad Request", "code": "BAD_REQUEST", "field": null }
+  Arabic: لا يمكن حذف العملة لأنها مستخدمة في فواتير شراء
+
 2.5 An item unit used by a product unit can't be deleted            -> BREAKING
 ---------------------------------------------------------------------------
 BEFORE:  DELETE /item-unit/:id   -> 200 (if no product used it as primary unit)
@@ -212,8 +242,10 @@ Same error shape as always: { statusCode, message, error, code, field }.
 Example:
   { "statusCode": 400, "message": "Insufficient stock: available 196, requested 197", "error": "Bad Request", "code": "INSUFFICIENT_STOCK", "field": "quantity" }
 
-INVALID_STATUS and QUANTITY_EXCEEDED are not returned yet: they arrive with
-purchase invoices / returns. Add the translations now.
+INVALID_STATUS is returned by purchase quotations and purchase invoices.
+INSUFFICIENT_STOCK is returned when cancelling a purchase invoice whose goods
+were already used. QUANTITY_EXCEEDED is not returned yet (it arrives with
+purchase returns). Add all the translations now.
 
 
 =====================================================================
@@ -246,6 +278,17 @@ PART 4 - ARABIC LABELS
                   unitFactor = معامل الوحدة, quantity = الكمية,
                   unitPrice = سعر الوحدة, discountPercent = نسبة خصم البند %,
                   discountValue = قيمة خصم البند, lineTotal = إجمالي البند
+  Purchase invoice: code = رقم الفاتورة, supplierInvoiceNumber = رقم فاتورة المورد,
+                  invoiceDate = تاريخ الفاتورة, dueDate = تاريخ الاستحقاق,
+                  paymentType = طريقة الدفع, currencyId = العملة,
+                  exchangeRate = سعر الصرف, paidAmount = المدفوع,
+                  remainingAmount = المتبقي, postedDate / postedBy = تاريخ الترحيل / رحّلها,
+                  cancelledDate / cancelledBy = تاريخ الإلغاء / ألغاها
+  Invoice line:   unitCost = سعر شراء الوحدة, baseQuantity = الكمية بالقطعة,
+                  stockUnitCost = تكلفة القطعة في المخزن, batchNumber = رقم التشغيلة,
+                  expiryDate = تاريخ الصلاحية
+  Returnable:     quantity = الكمية المشتراة, returnedQuantity = الكمية المرتجعة,
+                  remainingQuantity = المتبقي للإرجاع
 
 4.2 Enum values (send / receive the TEXT value)
 -----------------------------------------------
@@ -280,3 +323,5 @@ CHECKLIST
 [ ] Paginated lists read data.items + data.meta
 [ ] Purchase quotations screens (list with filters, form with lines, status buttons)
 [ ] Highlight the line from "field": "lines.N.<field>"
+[ ] Purchase invoices screens (form with lines, payment, currency; Post and Cancel buttons; read-only when not DRAFT)
+[ ] Currency delete: show the "used by invoices" error

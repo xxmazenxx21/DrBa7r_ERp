@@ -23,6 +23,7 @@ Files in this folder
   product-units.txt /products/:productId/units, /product-units/:id  (carton = 12 pieces)
   stock.txt         /stock-movements, /stock-movements/item-card  (item card) + what changed in /product-inventory
   purchase-quotations.txt  /purchase-quotations  (عروض أسعار الشراء: header + lines, statuses)
+  purchase-invoices.txt    /purchase-invoices    (فواتير الشراء: post = stock in, cancel = stock out)
 
 
 Pagination (every NEW Week 2 list)

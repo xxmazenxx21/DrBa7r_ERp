@@ -32,6 +32,7 @@ model Product {
   units                  ProductUnit[]
   stockMovements         StockMovement[]
   purchaseQuotationLines PurchaseQuotationLine[]
+  purchaseInvoiceLines   PurchaseInvoiceLine[]
 }
 
 model ProductInventory {
