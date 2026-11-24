@@ -29,6 +29,32 @@ export class ProductsService {
       );
   }
 
+  /**
+   * The primary unit is LOCKED once anything is counted in it: every stock
+   * quantity (StockMovement, in pieces) and every product-unit factor
+   * ("carton = 12 pieces") means "in the primary unit". Changing it later would
+   * silently change the meaning of all of them, so it may only change while
+   * the product has NO stock movement and NO active product unit.
+   * (This also covers "the new primary is already one of its units": that
+   * needs an active unit, which locks it.)
+   */
+  private async assertPrimaryUnitNotUsed(productId: string) {
+    const [movements, units] = await Promise.all([
+      this.prisma.stockMovement.count({ where: { productId } }),
+      this.prisma.productUnit.count({ where: { productId, deletedAt: null } }),
+    ]);
+    if (movements > 0 || units > 0) {
+      throw new BadRequestException(
+        errorBody(
+          400,
+          "primaryItemUnitId can't change: stock and units are stored in the current primary unit",
+          ErrorCode.BAD_REQUEST,
+          'primaryItemUnitId',
+        ),
+      );
+    }
+  }
+
   async create(dto: CreateProductDto) {
     await this.assertRefs(dto.categoryId, dto.primaryItemUnitId);
     await assertNotUsedByDeleted(this.prisma.product, 'product', {
@@ -108,25 +134,11 @@ export class ProductsService {
       }
     }
     await this.assertRefs(dto.categoryId, dto.primaryItemUnitId);
-    if (dto.primaryItemUnitId !== undefined) {
-      // A unit can't be the primary one (factor 1) AND another unit (factor 12).
-      const asOtherUnit = await this.prisma.productUnit.findFirst({
-        where: {
-          productId: id,
-          itemUnitId: dto.primaryItemUnitId,
-          deletedAt: null,
-        },
-      });
-      if (asOtherUnit) {
-        throw new BadRequestException(
-          errorBody(
-            400,
-            "primaryItemUnitId is already one of the product's units; delete that product unit first",
-            ErrorCode.BAD_REQUEST,
-            'primaryItemUnitId',
-          ),
-        );
-      }
+    if (
+      dto.primaryItemUnitId !== undefined &&
+      dto.primaryItemUnitId !== current.primaryItemUnitId
+    ) {
+      await this.assertPrimaryUnitNotUsed(id);
     }
     await assertNotUsedByDeleted(this.prisma.product, 'product', {
       barcode: dto.barcode,

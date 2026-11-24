@@ -180,8 +180,11 @@ PRODUCT UNITS APIs
 
 Related rules in other modules
 ------------------------------
-- PATCH /products/:id refuses a primaryItemUnitId that is already one of the
-  product's units (400, field primaryItemUnitId). Delete that unit first.
+- The product's primary unit is LOCKED while it has any active unit (or any
+  stock movement): PATCH /products/:id with a DIFFERENT primaryItemUnitId ->
+  400 BAD_REQUEST field primaryItemUnitId, "primaryItemUnitId can't change:
+  stock and units are stored in the current primary unit" (every factor here
+  is counted in the primary unit). See doc/week1/products.txt.
 - DELETE /item-unit/:id refuses an item unit used by an active product unit
   (400 "ItemUnit is used by N product unit(s) and cannot be deleted").
 - Documents (quotations, invoices, returns) accept a line unit only if it is
@@ -193,4 +196,4 @@ Suggested Arabic messages
   BAD_REQUEST + itemUnitId (primary unit)     هذه هي الوحدة الأساسية للصنف (معاملها 1) ولا يمكن إضافتها مرة أخرى
   ALREADY_EXISTS + itemUnitId                 هذه الوحدة معرفة بالفعل لهذا الصنف
   BAD_REQUEST + itemUnitId (not defined)      هذه الوحدة غير معرفة لهذا الصنف
-  BAD_REQUEST + primaryItemUnitId             هذه الوحدة معرفة كوحدة أخرى للصنف، احذفها أولًا
+  BAD_REQUEST + primaryItemUnitId             لا يمكن تغيير الوحدة الأساسية بعد استخدام الصنف (له حركات مخزن أو وحدات)

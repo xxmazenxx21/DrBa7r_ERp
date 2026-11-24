@@ -224,8 +224,18 @@ PRODUCTS APIs
    - 400 itemType "SERVICE" while the product is still in a warehouse (Week 2)
      { "statusCode": 400, "message": "itemType can't be SERVICE while the product is in a warehouse; remove it from the warehouses first", "error": "Bad Request", "code": "BAD_REQUEST", "field": "itemType" }
      (DELETE its /product-inventory records first)
-   - 400 primaryItemUnitId is already one of this product's other units (Week 2)
-     { "statusCode": 400, "message": "primaryItemUnitId is already one of the product's units; delete that product unit first", "error": "Bad Request", "code": "BAD_REQUEST", "field": "primaryItemUnitId" }
+   - 400 primaryItemUnitId changed to a DIFFERENT unit after the product was used (Week 2)
+     { "statusCode": 400, "message": "primaryItemUnitId can't change: stock and units are stored in the current primary unit", "error": "Bad Request", "code": "BAD_REQUEST", "field": "primaryItemUnitId" }
+     The primary unit is LOCKED as soon as the product has:
+       - ANY stock movement (it was ever put in a warehouse with a quantity /
+         cost, see doc/week2/stock.txt). Movements are permanent, so this
+         stays locked even after the stock is deleted, or
+       - ANY active product unit (carton = 12..., see doc/week2/product-units.txt).
+     Why: every stored quantity and every unit factor is counted in the primary
+     unit (12 = 12 PIECES); changing it would silently change all of them.
+     Sending the SAME primaryItemUnitId it already has is allowed.
+     A new product with no stock and no units can still change it freely.
+     Arabic: لا يمكن تغيير الوحدة الأساسية بعد استخدام الصنف (له حركات مخزن أو وحدات)
 
 5) Delete Product
    Method: DELETE
