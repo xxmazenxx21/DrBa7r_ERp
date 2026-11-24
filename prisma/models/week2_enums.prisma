@@ -1,0 +1,39 @@
+// Week 2 enums (lists of choices). Arabic = what the frontend shows.
+
+// Status of a posted-type document (purchase invoice / return)
+enum DocumentStatus {
+  DRAFT // مسودة  - saved, no effect, can be edited / deleted
+  POSTED // مُرحّل - final: stock moved, document locked
+  CANCELLED // ملغي   - posting reversed by an opposite movement; kept
+}
+
+enum PaymentType {
+  CASH // نقدي
+  CREDIT // آجل
+}
+
+// Status of a purchase quotation
+enum QuotationStatus {
+  DRAFT // مسودة
+  SENT // مُرسل
+  ACCEPTED // مقبول
+  REJECTED // مرفوض
+  CONVERTED // تم التحويل لفاتورة
+}
+
+// Document kinds; also the prefix of the document number (PI-2026-000001)
+enum DocumentType {
+  PQ // عرض سعر شراء   (Purchase Quotation)
+  PI // فاتورة شراء    (Purchase Invoice)
+  PR // مرتجع شراء     (Purchase Return)
+}
+
+// One stock movement line = one entry in the item card (كارت الصنف)
+enum StockMovementType {
+  OPENING // رصيد افتتاحي
+  ADJUSTMENT // تسوية
+  PURCHASE // شراء
+  PURCHASE_CANCEL // إلغاء فاتورة شراء
+  PURCHASE_RETURN // مرتجع شراء
+  PURCHASE_RETURN_CANCEL // إلغاء مرتجع شراء
+}

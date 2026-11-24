@@ -51,6 +51,7 @@ Other scripts: `npm run build` (= `prisma generate && nest build`), `npm run lin
   - `employees`: `/employees` (all, optional `?branchId=`), `/employees/branch/:branchId` and `/employees/:id`
   - `users`: `/users`
   - `auth`: `/auth/signup` (temporary), `/auth/login`
+  - `numbering` (no routes): `NumberingService.next(tx, docType, date)` → `PI-2026-000001`. Exported by `NumberingModule`; import that module where you create documents.
   - Static GET routes (`@Get()`, `@Get('branch/:branchId')`) must stay **before** `@Get(':id')` in each controller. List filters use a query DTO (e.g. `src/utils/dto/branch-filter.dto.ts`), so they're validated and whitelisted.
 - `src/utils/`: `code-generator/code.generator.ts` (`generateCode('PRD')` gives `PRD-123456`, a random 6-digit number with no uniqueness guarantee), `hash/hash.ts` (bcrypt, 10 rounds), `enum/enum.ts` (TS `Role` enum, plus `ItemType` / `CostingMethod` re-exported from the generated Prisma client), `errors/error-codes.ts` (`ErrorCode`, `errorBody()`), `exists/assert-exists.ts` (`assertExists`, `doesNotExist`), `unique/deleted-unique.ts` (`assertNotUsedByDeleted`), `validation/` (`IsOptionalNotNull`, `Trim`, `MaxDecimalPlaces`, `IsUsername`), `dto/branch-filter.dto.ts`, `response/response.ts` (`ok(message, data)`), `pagination/pagination.ts` (`PaginationQueryDto`, `pageArgs()`, `paginated()`), `document/document-totals.ts` (`calcLine()`, `calcTotals()`). `src/users/user.select.ts` has `safeUserSelect` (every user field except `password`). `src/users/user-branch.ts` has `resolveUserBranch` (used by users create/update and signup).
 
@@ -62,7 +63,9 @@ Other scripts: `npm run build` (= `prisma generate && nest build`), `npm run lin
 - Prisma 7 **multi-file schema**: `prisma/schema.prisma` (generator + datasource) plus one file per model in `prisma/models/*.prisma`. `prisma.config.ts` points `schema` at the `prisma/` directory and reads `DATABASE_URL`.
 - The client is generated to `generated/prisma` (gitignored, `moduleFormat = "cjs"`). Import it from `../../generated/prisma/client.js`.
 - Migrations live in `prisma/migrations/`. When you change a model, run `npx prisma migrate dev --name <name>` and commit the migration. Docker applies migrations with `migrate deploy`.
-- Models: Branch, Inventory, Categories, ItemUnit, Product, ProductInventory, Customer, Supplier, Employee, User, Currency, PurchaseInvoice.
+- Models: Branch, Inventory, Categories, ItemUnit, Product, ProductInventory, Customer, Supplier, Employee, User, Currency, PurchaseInvoice, DocumentSequence.
+- Week 2 enums live in `prisma/models/week2_enums.prisma` (migration `week2_enums_and_sequence`): `DocumentStatus` (DRAFT/POSTED/CANCELLED), `PaymentType` (CASH/CREDIT), `QuotationStatus` (DRAFT/SENT/ACCEPTED/REJECTED/CONVERTED), `DocumentType` (PQ/PI/PR), `StockMovementType` (OPENING/ADJUSTMENT/PURCHASE/PURCHASE_CANCEL/PURCHASE_RETURN/PURCHASE_RETURN_CANCEL). `PurchaseInvoice.status` / `paymentType` are still `Int` until the purchase-invoices task.
+- **Document numbers** (`DocumentSequence`, `@@unique([docType, year])`): only `NumberingService.next()` touches this table. Always call it with the **same `tx`** that creates the document (`prisma.$transaction(async (tx) => { const code = await this.numbering.next(tx, 'PI', dto.invoiceDate); ... })`), so a failed document doesn't burn a number and the locked counter row serializes concurrent creates. It's a native upsert (`INSERT … ON CONFLICT`), safe for the first number of a year too. Year = `date.getUTCFullYear()`.
 - Design reference for upcoming work (purchase/sales invoices, returns, quotations): `Week2_ERP_DB_Design_Purchase_Sales.md`. `PurchaseInvoice` and `Currency` have models but no API module yet.
 
 ## Conventions

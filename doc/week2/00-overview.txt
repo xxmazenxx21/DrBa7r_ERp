@@ -16,6 +16,7 @@ Local (Docker):  http://localhost:3000
 Files in this folder
 --------------------
   00-overview.txt   this file: pagination, new error codes, how totals are computed
+  numbering.txt     document numbers (PI-2026-000001) + Week 2 enum values (Arabic labels)
 
 
 Pagination (every NEW Week 2 list)
