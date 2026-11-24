@@ -89,6 +89,7 @@ BRANCH APIs
    Method: PATCH
    URL: /branch/:id
    Description: Partial update. Fields: name (min 2 characters), address.
+                "address": null CLEARS the address. null on name -> 400.
 
    Request Example:
    {

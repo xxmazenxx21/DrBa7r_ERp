@@ -40,11 +40,14 @@ AUTH APIs
                 never returned.
 
    Validation Rules:
-   - username: required string (must be unique)
+   - username: required, 3-30 characters, only letters (A-Z a-z), digits,
+               dot (.), underscore (_), dash (-). NO spaces. Trimmed. Unique.
    - password: required string, minimum 6 characters
    - email: optional, valid email (must be unique)
-   - employeeId: optional string (id of an existing employee)
-   - branchId: optional string (id of an existing branch)
+   - employeeId: optional string (id of an ACTIVE employee)
+   - branchId: optional string (id of an ACTIVE branch). With an employeeId it
+               is filled from the employee; a different branch -> 400
+               (same branch rule as POST /users, see users.txt)
    - role: optional, one of SUPERADMIN | ADMIN | ACCOUNTANT | SALES | USER
            (accepted but IGNORED - the user is always SUPERADMIN)
 
@@ -90,7 +93,7 @@ AUTH APIs
      "field": "username"
    }
 
-   Error Response (400 - employeeId / branchId does not exist):
+   Error Response (400 - employeeId / branchId does not exist or is deleted):
    {
      "statusCode": 400,
      "message": "branchId does not exist",
@@ -102,10 +105,28 @@ AUTH APIs
    Error Response (400 - validation / unknown field):
    {
      "statusCode": 400,
-     "message": ["password must be longer than or equal to 6 characters"],
+     "message": ["Password must be at least 6 characters long"],
      "error": "Bad Request",
      "code": "VALIDATION_FAILED",
      "field": "password"
+   }
+
+   Error Response (400 - bad username, e.g. "ahmed ali"):
+   {
+     "statusCode": 400,
+     "message": ["username must be 3-30 characters: letters, digits, dot, underscore or dash only (no spaces)"],
+     "error": "Bad Request",
+     "code": "VALIDATION_FAILED",
+     "field": "username"
+   }
+
+   Error Response (400 - branchId different from the employee's branch):
+   {
+     "statusCode": 400,
+     "message": "branchId must match the employee's branch",
+     "error": "Bad Request",
+     "code": "BAD_REQUEST",
+     "field": "branchId"
    }
 
 2) Login
@@ -116,7 +137,9 @@ AUTH APIs
                 and returns a JWT plus the user's id, username and role.
 
    Validation Rules:
-   - username: required string
+   - username: required string (spaces at the start/end are trimmed; the
+               3-30 characters rule is NOT checked here, so old accounts can
+               still log in)
    - password: required string
 
    Request Example:

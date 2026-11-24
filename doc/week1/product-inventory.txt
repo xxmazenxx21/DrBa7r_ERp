@@ -23,8 +23,9 @@ A product-inventory record = the stock of ONE product inside ONE inventory
 inventory. Deleting it and adding the same product again RESTORES the old
 record (see Create).
 
-NOTE: quantity / costPrice are sent as numbers but returned as strings, with
-      up to 4 decimals (100.12345 is stored as "100.1235").
+NOTE: quantity / costPrice are sent as numbers but returned as strings.
+      Max 4 decimal places: 100.1234 is OK, 100.12345 -> 400 (never rounded):
+      { "statusCode": 400, "message": ["quantity must have at most 4 decimal places"], "error": "Bad Request", "code": "VALIDATION_FAILED", "field": "quantity" }
 
 Product inventory object (what "data" contains)
 -----------------------------------------------
@@ -54,9 +55,9 @@ PRODUCT INVENTORY APIs
    - inventoryId: required string (id from GET /inventory/branch/:branchId)
 
    Validation Rules:
-   - productId: required string
-   - quantity: required number, minimum 0
-   - costPrice: required number, minimum 0
+   - productId: required string (id of an ACTIVE product)
+   - quantity: required number, minimum 0, max 4 decimal places
+   - costPrice: required number, minimum 0, max 4 decimal places
    - inventoryId: optional, IGNORED (the one in the URL is used)
 
    Request Example:
@@ -88,7 +89,8 @@ PRODUCT INVENTORY APIs
 
    Error Responses:
    - 404 { "statusCode": 404, "message": "Inventory not found", "error": "Not Found", "code": "NOT_FOUND", "field": null }
-   - 404 { "statusCode": 404, "message": "Product not found", "error": "Not Found", "code": "NOT_FOUND", "field": null }
+   - 400 { "statusCode": 400, "message": "productId does not exist", "error": "Bad Request", "code": "DOES_NOT_EXIST", "field": "productId" }
+         (productId missing OR deleted. Was 404 "Product not found" before UPDATE 3)
    - 400 { "statusCode": 400, "message": "Product inventory already exists", "error": "Bad Request", "code": "ALREADY_EXISTS", "field": "productId" }
          (this product already has an ACTIVE record in this inventory -> use PATCH instead)
 
@@ -157,6 +159,7 @@ PRODUCT INVENTORY APIs
    Description: Sets quantity and/or costPrice directly. Intended for MANUAL
                 CORRECTION (e.g. a wrong opening quantity or cost entered by
                 mistake). Only quantity and costPrice are changed.
+                Same limits as Create (min 0, max 4 decimals); null -> 400.
 
    Request Example:
    {

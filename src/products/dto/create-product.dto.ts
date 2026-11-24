@@ -8,6 +8,8 @@ import {
   Min,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { MaxDecimalPlaces } from '../../utils/validation/max-decimal-places';
+import { IsOptionalNotNull } from '../../utils/validation/optional';
 import { CostingMethod, ItemType } from '../../utils/enum/enum';
 
 export class CreateProductDto {
@@ -34,37 +36,41 @@ export class CreateProductDto {
   primaryItemUnitId: string;
 
   // Default STOCK. Values: STOCK (مخزني) | SERVICE (خدمي)
-  @IsOptional()
+  @IsOptionalNotNull()
   @IsEnum(ItemType)
   itemType?: ItemType;
 
   // Default WEIGHTED_AVERAGE (متوسط التكلفة المرجح)
-  @IsOptional()
+  @IsOptionalNotNull()
   @IsEnum(CostingMethod)
   costingMethod?: CostingMethod;
 
   @Type(() => Number)
   @IsNumber()
+  @MaxDecimalPlaces(4)
   @Min(0)
   retailPrice: number;
 
   @Type(() => Number)
   @IsNumber()
+  @MaxDecimalPlaces(4)
   @Min(0)
   wholesalePrice: number;
 
   @Type(() => Number)
   @IsNumber()
+  @MaxDecimalPlaces(4)
   @Min(0)
   bulkWholesalePrice: number;
 
-  @IsOptional()
+  @IsOptionalNotNull()
   @Type(() => Number)
   @IsNumber()
+  @MaxDecimalPlaces(4)
   @Min(0)
   reorderLimit?: number;
 
-  @IsOptional()
+  @IsOptionalNotNull()
   @IsBoolean()
   hasExpiryDate?: boolean;
 }

@@ -147,6 +147,7 @@ GET {{baseUrl}}/inventory?branchId={{cairoBranchId}}
 Authorization: Bearer {{token}}
 
 ### Create an employee in Cairo ("hireDate" can be "YYYY-MM-DD")
+# @name createEmployee
 POST {{baseUrl}}/employees/branch/{{cairoBranchId}}
 Content-Type: application/json
 Authorization: Bearer {{token}}
@@ -211,4 +212,76 @@ Authorization: Bearer {{token}}
   "productId": "{{createProduct.response.body.data.id}}",
   "quantity": 100,
   "costPrice": 12.5
+}
+
+### Clear an employee's hire date (PATCH null clears a nullable field)
+PATCH {{baseUrl}}/employees/{{createEmployee.response.body.data.id}}
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "hireDate": null
+}
+
+### Create a user linked to the employee: branchId is filled from the employee
+# username: 3-30 chars, letters/digits . _ - only, no spaces
+POST {{baseUrl}}/users
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "username": "ahmed.sales",
+  "password": "secret123",
+  "role": "SALES",
+  "employeeId": "{{createEmployee.response.body.data.id}}"
+}
+
+### 400: branchId differs from the employee's branch
+POST {{baseUrl}}/users
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "username": "ahmed.other",
+  "password": "secret123",
+  "role": "SALES",
+  "employeeId": "{{createEmployee.response.body.data.id}}",
+  "branchId": "{{createAlexBranch.response.body.data.id}}"
+}
+
+### 400: username with a space
+POST {{baseUrl}}/users
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "username": "ahmed ali",
+  "password": "secret123",
+  "role": "USER"
+}
+
+### Supplier with a NEGATIVE opening balance (the supplier owes us 500)
+# supplier: + = we owe the supplier, - = the supplier owes us
+# customer: + = the customer owes us, - = we owe the customer
+POST {{baseUrl}}/supplier
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "name": "مورد دفعة مقدمة",
+  "openingBalance": -500
+}
+
+### 400: price with 5 decimals (max 4 for prices/quantities, 2 for money)
+POST {{baseUrl}}/products
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "name": "صنف تجربة",
+  "categoryId": "{{createCategory.response.body.data.id}}",
+  "primaryItemUnitId": "{{createUnit.response.body.data.id}}",
+  "retailPrice": 12.34567,
+  "wholesalePrice": 12,
+  "bulkWholesalePrice": 10
 }

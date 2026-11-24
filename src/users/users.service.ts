@@ -6,6 +6,7 @@ import { hashPassword } from '../utils/hash/hash';
 import { ok } from '../utils/response/response';
 import { safeUserSelect } from './user.select';
 import { assertNotUsedByDeleted } from '../utils/unique/deleted-unique';
+import { resolveUserBranch } from './user-branch';
 
 @Injectable()
 export class UsersService {
@@ -17,6 +18,7 @@ export class UsersService {
       email: createUserDto.email,
       employeeId: createUserDto.employeeId,
     });
+    const branchId = await resolveUserBranch(this.prisma, createUserDto);
     const user = await this.prisma.user.create({
       data: {
         username: createUserDto.username,
@@ -24,7 +26,7 @@ export class UsersService {
         role: createUserDto.role,
         email: createUserDto.email,
         employeeId: createUserDto.employeeId,
-        branchId: createUserDto.branchId,
+        branchId,
         // lastLoginDate stays null until the first login
       },
       select: safeUserSelect,
@@ -52,12 +54,17 @@ export class UsersService {
   }
 
   async update(id: string, updateUserDto: UpdateUserDto) {
-    await this.findOne(id);
+    const { data: current } = await this.findOne(id);
     await assertNotUsedByDeleted(this.prisma.user, 'user', {
       username: updateUserDto.username,
       email: updateUserDto.email,
       employeeId: updateUserDto.employeeId,
     });
+    const branchId = await resolveUserBranch(
+      this.prisma,
+      updateUserDto,
+      current.employeeId,
+    );
 
     const user = await this.prisma.user.update({
       where: { id },
@@ -69,7 +76,7 @@ export class UsersService {
         role: updateUserDto.role,
         email: updateUserDto.email,
         employeeId: updateUserDto.employeeId,
-        branchId: updateUserDto.branchId,
+        branchId,
       },
       select: safeUserSelect,
     });

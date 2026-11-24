@@ -81,7 +81,8 @@ export class EmployeesService {
         fullName: dto.fullName,
         nationalId: dto.nationalId,
         jobTitle: dto.jobTitle,
-        hireDate: dto.hireDate ? new Date(dto.hireDate) : undefined,
+        // null clears the date, undefined leaves it unchanged
+        hireDate: dto.hireDate ? new Date(dto.hireDate) : dto.hireDate,
       },
     });
     return ok('Employee updated successfully', employee);

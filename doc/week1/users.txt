@@ -25,6 +25,14 @@ Users are the accounts that log into the ERP. A user can optionally be linked
 to an Employee and/or a Branch, and always has one Role.
 The password is NEVER returned by any endpoint.
 
+Branch rule (user <-> employee):
+  A user linked to an employee is ALWAYS in the employee's branch.
+  - employeeId sent, branchId NOT sent -> branchId is filled from the employee
+  - both sent and different            -> 400 "branchId must match the employee's branch"
+  - PATCH branchId only, on a user that already has an employee -> checked
+    against that employee (different -> same 400)
+  - no employee                        -> branchId is free (optional)
+
 Role values (field "role")
 --------------------------
     SUPERADMIN | ADMIN | ACCOUNTANT | SALES | USER
@@ -51,12 +59,15 @@ Method: POST
 URL: /users
 
 Validation Rules:
-- username   : required string (must be unique)
+- username   : required, 3-30 characters, only letters (A-Z a-z), digits,
+               dot (.), underscore (_), dash (-). NO spaces, no Arabic letters.
+               Spaces at the start/end are trimmed. Must be unique.
 - password   : required string, minimum 6 characters (stored hashed)
 - role       : required, one of the role values above
 - email      : optional, valid email (must be unique)
-- employeeId : optional string (id of an existing employee; one user per employee)
-- branchId   : optional string (id of an existing branch)
+- employeeId : optional string (id of an ACTIVE employee; one user per employee)
+- branchId   : optional string (id of an ACTIVE branch). With an employeeId:
+               leave it out (filled from the employee) or send the same branch.
 
 Request Example:
 {
@@ -76,14 +87,25 @@ Success Response (201):
 
 Error Cases:
 - Missing/invalid/unknown fields              -> 400 (validation error)
+- Bad username                                -> 400
+    {
+      "statusCode": 400,
+      "message": ["username must be 3-30 characters: letters, digits, dot, underscore or dash only (no spaces)"],
+      "error": "Bad Request",
+      "code": "VALIDATION_FAILED",
+      "field": "username"
+    }
 - Duplicate username / email / employeeId of an ACTIVE user -> 409
     { "statusCode": 409, "message": "username already exists", "error": "Conflict", "code": "ALREADY_EXISTS", "field": "username" }
     (message is "email already exists" / "employeeId already exists" accordingly)
 - username / email / employeeId of a DELETED user -> 409 (the user is NOT restored)
     { "statusCode": 409, "message": "username belongs to a deleted user", "error": "Conflict", "code": "BELONGS_TO_DELETED", "field": "username" }
     (or "email belongs to a deleted user" / "employeeId belongs to a deleted user")
-- employeeId or branchId that does not exist  -> 400
+- employeeId or branchId that does not exist OR is deleted -> 400
     { "statusCode": 400, "message": "branchId does not exist", "error": "Bad Request", "code": "DOES_NOT_EXIST", "field": "branchId" }
+    { "statusCode": 400, "message": "employeeId does not exist", "error": "Bad Request", "code": "DOES_NOT_EXIST", "field": "employeeId" }
+- branchId different from the employee's branch -> 400
+    { "statusCode": 400, "message": "branchId must match the employee's branch", "error": "Bad Request", "code": "BAD_REQUEST", "field": "branchId" }
 
 
 ---------------------------------------------------------
@@ -130,6 +152,12 @@ URL: /users/:id
 Description: Partial update. Allowed fields: username, password, role,
 email, employeeId, branchId (all optional).
 Sending "password" changes the user's password (min 6 characters, stored hashed).
+null CLEARS a nullable field:
+  "email": null       -> removes the email
+  "employeeId": null  -> unlinks the employee (branchId is kept)
+  "branchId": null    -> removes the branch (400 if the user still has an employee)
+null on username / password / role -> 400.
+The branch rule above applies (employeeId only -> branch follows the employee).
 
 Request Example (change role and email):
 {
@@ -142,6 +170,11 @@ Request Example (change password):
   "password": "newpass123"
 }
 
+Request Example (link to another employee; branchId follows automatically):
+{
+  "employeeId": "cm4employee999"
+}
+
 Success Response (200):
 {
   "message": "User updated successfully",
@@ -150,9 +183,10 @@ Success Response (200):
 
 Error Cases:
 - User not found / deleted                            -> 404 (same body as Get User By ID)
-- Invalid role / bad email / password shorter than 6  -> 400
+- Invalid role / bad email / bad username / password shorter than 6 -> 400
 - username / email / employeeId used by an active or a deleted user -> 409 (same bodies as Create)
-- employeeId or branchId that does not exist          -> 400 (same body as Create)
+- employeeId or branchId that does not exist or is deleted -> 400 DOES_NOT_EXIST (same body as Create)
+- branchId different from the employee's branch       -> 400 (same body as Create)
 
 
 ---------------------------------------------------------
@@ -178,7 +212,7 @@ Method: POST
 URL: /users/login
 Access: Public (no token needed)
 Description: Exactly the same as POST /auth/login - same body, same response,
-same errors (see auth.txt).
+same errors (see auth.txt). Spaces around the username are trimmed.
 
 Request Example:
 {

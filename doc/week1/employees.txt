@@ -163,11 +163,15 @@ EMPLOYEES APIs
    URL: /employees/:id
    Description: Partial update. Fields (all optional): fullName, nationalId,
                 jobTitle, hireDate.
+                null CLEARS a nullable field: nationalId, jobTitle, hireDate
+                ("hireDate": null removes the date). null on fullName -> 400.
+                The branch can't be changed here.
 
    Request Example:
    {
      "jobTitle": "مدير فرع",
-     "fullName": "أحمد محمد محمود"
+     "fullName": "أحمد محمد محمود",
+     "hireDate": null                   <-- clears the hire date
    }
 
    Response Example:

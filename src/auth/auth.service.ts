@@ -7,6 +7,7 @@ import { hashPassword, comparePassword } from '../utils/hash/hash';
 import { ok } from '../utils/response/response';
 import { safeUserSelect } from '../users/user.select';
 import { assertNotUsedByDeleted } from '../utils/unique/deleted-unique';
+import { resolveUserBranch } from '../users/user-branch';
 import { Role } from '../../generated/prisma/client.js';
 
 @Injectable()
@@ -23,13 +24,14 @@ export class AuthService {
       email: createAuthDto.email,
       employeeId: createAuthDto.employeeId,
     });
+    const branchId = await resolveUserBranch(this.prisma, createAuthDto);
     const user = await this.prisma.user.create({
       data: {
         username: createAuthDto.username,
         password: await hashPassword(createAuthDto.password),
         email: createAuthDto.email,
         employeeId: createAuthDto.employeeId,
-        branchId: createAuthDto.branchId,
+        branchId,
         role: Role.SUPERADMIN, // always, whatever the client sends
       },
       select: safeUserSelect,

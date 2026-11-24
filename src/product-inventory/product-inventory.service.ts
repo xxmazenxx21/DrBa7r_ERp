@@ -8,6 +8,7 @@ import { UpdateProductInventoryDto } from './dto/update-product-inventory.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { ok } from '../utils/response/response';
 import { ErrorCode, errorBody } from '../utils/errors/error-codes';
+import { assertExists } from '../utils/exists/assert-exists';
 
 @Injectable()
 export class ProductInventoryService {
@@ -26,10 +27,12 @@ export class ProductInventoryService {
 
     if (!inventory) throw new NotFoundException('Inventory not found');
 
-    const product = await this.prisma.product.findFirst({
-      where: { id: createProductInventoryDto.productId, deletedAt: null },
-    });
-    if (!product) throw new NotFoundException('Product not found');
+    // Missing or soft-deleted product -> 400 DOES_NOT_EXIST, field productId.
+    await assertExists(
+      this.prisma.product,
+      'productId',
+      createProductInventoryDto.productId,
+    );
 
     // One row per product + warehouse (@@unique), deleted rows included.
     const existing = await this.prisma.productInventory.findUnique({

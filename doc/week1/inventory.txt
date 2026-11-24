@@ -134,7 +134,8 @@ INVENTORY APIs
 4) Update Inventory
    Method: PATCH
    URL: /inventory/:id
-   Description: Partial update (name and/or address).
+   Description: Partial update (name and/or address). Both are required
+                values, so null -> 400 (no nullable fields here).
 
    Request Example:
    {

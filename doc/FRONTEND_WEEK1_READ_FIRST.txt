@@ -15,8 +15,11 @@ How to read the docs:
   2. Then read doc/FRONTEND_WEEK1_UPDATE_2.txt (the next round of changes:
      renamed route/field/role, product enums, 2 new list endpoints, and
      error codes for translation).
-  3. Then read doc/week1/00-overview.txt (general rules, errors).
-  4. Then the module files in doc/week1/ (exact bodies for every endpoint).
+  3. Then read doc/FRONTEND_WEEK1_UPDATE_3.txt (third round: negative
+     opening balances, deleted references, user/employee branch rule,
+     username + decimal limits, null clears fields, decisions for later weeks).
+  4. Then read doc/week1/00-overview.txt (general rules, errors).
+  5. Then the module files in doc/week1/ (exact bodies for every endpoint).
 
 NOTE: this file already uses the NEW names from UPDATE_2 (/product-inventory,
 primaryItemUnitId, ACCOUNTANT). The error bodies shown below are shortened:
@@ -314,6 +317,7 @@ PART 4 - OTHER CHANGES
 - Numbers are still RETURNED AS STRINGS (prices, quantity, costPrice,
   creditLimit, openingBalance), e.g. "12.5". Use Number(value) before math.
   They keep up to 4 decimals: 12.34567 is saved as "12.3457".
+  (CHANGED in UPDATE_3: too many decimals is now a 400, never rounded.)
 - POST /users no longer sets lastLoginDate: it is null until the first login.
 - Every delete in every module is a soft delete now.
 

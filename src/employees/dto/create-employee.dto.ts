@@ -25,5 +25,5 @@ export class CreateEmployeeDto {
 
   @IsDateString()
   @IsOptional()
-  hireDate?: string;
+  hireDate?: string | null; // PATCH null clears it
 }

@@ -152,7 +152,7 @@ Host: localhost   Port: 5433   User: erp   Password: erp_password   Database: er
 
 ## API documentation (for the frontend)
 
-> **Frontend: read [`doc/FRONTEND_WEEK1_READ_FIRST.txt`](doc/FRONTEND_WEEK1_READ_FIRST.txt) first, then [`doc/FRONTEND_WEEK1_UPDATE_2.txt`](doc/FRONTEND_WEEK1_UPDATE_2.txt).** Together they list every change you must handle, including the breaking ones.
+> **Frontend: read [`doc/FRONTEND_WEEK1_READ_FIRST.txt`](doc/FRONTEND_WEEK1_READ_FIRST.txt) first, then [`doc/FRONTEND_WEEK1_UPDATE_2.txt`](doc/FRONTEND_WEEK1_UPDATE_2.txt) and [`doc/FRONTEND_WEEK1_UPDATE_3.txt`](doc/FRONTEND_WEEK1_UPDATE_3.txt).** Together they list every change you must handle, including the breaking ones.
 
 The docs are in [`doc/`](doc/), organized by week, with one `.txt` file per module. Start with
 [`doc/week1/00-overview.txt`](doc/week1/00-overview.txt). It explains the login, the general rules and the errors, and links every module.
