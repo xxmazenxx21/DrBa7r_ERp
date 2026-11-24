@@ -17,6 +17,7 @@ Files in this folder
 --------------------
   00-overview.txt   this file: pagination, new error codes, how totals are computed
   numbering.txt     document numbers (PI-2026-000001) + Week 2 enum values (Arabic labels)
+  currency.txt      /currency  (currencies + the default currency)
 
 
 Pagination (every NEW Week 2 list)

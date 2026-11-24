@@ -285,3 +285,56 @@ Authorization: Bearer {{token}}
   "wholesalePrice": 12,
   "bulkWholesalePrice": 10
 }
+
+### ===================== Week 2 =====================
+
+### Create EGP as the DEFAULT currency ("code": 3 capital letters, sent by you)
+# @name createEgp
+POST {{baseUrl}}/currency
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "code": "EGP",
+  "name": "جنيه مصري",
+  "symbol": "ج.م",
+  "isDefault": true
+}
+
+### Create USD (not default)
+# @name createUsd
+POST {{baseUrl}}/currency
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "code": "USD",
+  "name": "دولار أمريكي",
+  "symbol": "$"
+}
+
+### List currencies (default first)
+GET {{baseUrl}}/currency
+Authorization: Bearer {{token}}
+
+### Make USD the default -> EGP becomes isDefault false automatically
+PATCH {{baseUrl}}/currency/{{createUsd.response.body.data.id}}
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "isDefault": true
+}
+
+### 400: the default currency (USD now) can't be deleted
+DELETE {{baseUrl}}/currency/{{createUsd.response.body.data.id}}
+Authorization: Bearer {{token}}
+
+### Give the default back to EGP
+PATCH {{baseUrl}}/currency/{{createEgp.response.body.data.id}}
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "isDefault": true
+}
