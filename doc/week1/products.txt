@@ -140,8 +140,11 @@ PRODUCTS APIs
 3) Get Product By ID
    Method: GET
    URL: /products/:id
-   Description: One active product with category, primary unit, and its
-                ACTIVE stock records in every inventory (productInventories).
+   Description: One active product with category, primary unit, its
+                ACTIVE stock records in every inventory (productInventories),
+                and its other units (units: carton = 12..., Week 2, see
+                doc/week2/product-units.txt). The primary unit is NOT in
+                "units" (it is primaryItemUnit, factor 1).
 
    Response Example:
    {
@@ -167,6 +170,20 @@ PRODUCTS APIs
              "updatedAt": "2026-08-07T00:00:00.000Z",
              "deletedAt": null
            }
+         }
+       ],
+       "units": [
+         {
+           "id": "cm4produnit1",
+           "productId": "cm4product123",
+           "itemUnitId": "cm4unitcarton",
+           "factor": "12",
+           "barcode": "6221234567999",
+           "retailPrice": "170",
+           "createdAt": "2026-11-24T10:00:00.000Z",
+           "updatedAt": "2026-11-24T10:00:00.000Z",
+           "deletedAt": null,
+           "itemUnit": { "id": "cm4unitcarton", "code": "unit-482913", "name": "كرتونة", ... }
          }
        ]
      }
@@ -204,6 +221,8 @@ PRODUCTS APIs
    - 404 same as Get Product By ID
    - 400 new categoryId / primaryItemUnitId does not exist or is deleted (same body as Create)
    - 409 barcode used by another active or deleted product (same bodies as Create)
+   - 400 primaryItemUnitId is already one of this product's other units (Week 2)
+     { "statusCode": 400, "message": "primaryItemUnitId is already one of the product's units; delete that product unit first", "error": "Bad Request", "code": "BAD_REQUEST", "field": "primaryItemUnitId" }
 
 5) Delete Product
    Method: DELETE

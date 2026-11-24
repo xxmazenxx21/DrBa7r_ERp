@@ -29,6 +29,7 @@ model Product {
   updatedAt          DateTime           @updatedAt
   deletedAt          DateTime?
   productInventories ProductInventory[]
+  units              ProductUnit[]
 }
 
 model ProductInventory {

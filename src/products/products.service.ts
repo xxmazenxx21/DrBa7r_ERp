@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { ErrorCode, errorBody } from '../utils/errors/error-codes';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -66,6 +71,12 @@ export class ProductsService {
           where: { deletedAt: null },
           include: { inventory: true },
         },
+        // the product's other units (carton = 12...), see product-units
+        units: {
+          where: { deletedAt: null },
+          include: { itemUnit: true },
+          orderBy: { factor: 'asc' },
+        },
       },
     });
     if (!product) {
@@ -77,6 +88,26 @@ export class ProductsService {
   async update(id: string, dto: UpdateProductDto) {
     await this.findOne(id);
     await this.assertRefs(dto.categoryId, dto.primaryItemUnitId);
+    if (dto.primaryItemUnitId !== undefined) {
+      // A unit can't be the primary one (factor 1) AND another unit (factor 12).
+      const asOtherUnit = await this.prisma.productUnit.findFirst({
+        where: {
+          productId: id,
+          itemUnitId: dto.primaryItemUnitId,
+          deletedAt: null,
+        },
+      });
+      if (asOtherUnit) {
+        throw new BadRequestException(
+          errorBody(
+            400,
+            "primaryItemUnitId is already one of the product's units; delete that product unit first",
+            ErrorCode.BAD_REQUEST,
+            'primaryItemUnitId',
+          ),
+        );
+      }
+    }
     await assertNotUsedByDeleted(this.prisma.product, 'product', {
       barcode: dto.barcode,
     });

@@ -1,0 +1,196 @@
+Product Units API Documentation (وحدات الصنف)
+=============================================
+
+Base URL
+--------
+Production:      https://drba7rerp-production.up.railway.app
+Local (Docker):  http://localhost:3000
+
+Authentication & access
+-----------------------
+All endpoints require:  Authorization: Bearer <access_token>   (see doc/week1/auth.txt)
+Only SUPERADMIN can call them:
+  - no / invalid token  -> 401 { "statusCode": 401, "message": "Unauthorized", "error": "Unauthorized", "code": "UNAUTHORIZED", "field": null }
+  - other roles         -> 403 { "statusCode": 403, "message": "You do not have the required roles to access this resource", "error": "Forbidden", "code": "FORBIDDEN", "field": null }
+
+Response shape: every success is { "message": "...", "data": ... }
+Every error has { statusCode, message, error, code, field } (see doc/week1/00-overview.txt)
+Unknown fields in a body -> 400 "property <name> should not exist"
+Delete is a SOFT delete (record hidden, kept in the database).
+Numbers are SENT as numbers and RETURNED as strings ("12").
+
+What is it?
+-----------
+ItemUnit (/item-unit) is only a list of names: قطعة، كرتونة، علبة.
+A product unit says, for ONE product, how many pieces one unit holds:
+    brush carton      = 12 pieces
+    toothpaste carton = 24 pieces
+The PRIMARY unit of the product (primaryItemUnitId, e.g. قطعة) is NOT added
+here: its factor is always 1. Stock is always counted in the primary unit,
+so a purchase of 10 cartons of brushes = 10 x 12 = 120 pieces in stock.
+
+Fields (Arabic label = what the screen shows)
+---------------------------------------------
+  field        Arabic             who fills it      notes
+  -----------  -----------------  ----------------  --------------------------------------
+  id           -                  server
+  productId    الصنف               user (URL)        from /products/:productId/units
+  itemUnitId   الوحدة              user              id from GET /item-unit. NOT the
+                                                    product's primary unit. One row per
+                                                    product + unit.
+  factor       عدد القطع في الوحدة  user              > 0, max 4 decimals (12, 0.5, 2.25)
+  barcode      باركود الوحدة       user, optional    unique; PATCH null clears it
+  retailPrice  سعر بيع الوحدة      user, optional    if the carton has its own selling
+                                                    price; >= 0, max 4 decimals; null clears
+  createdAt / updatedAt / deletedAt  server
+
+Product unit object (what "data" contains in create / update)
+-------------------------------------------------------------
+{
+  "id": "cmx1produnit01",
+  "productId": "cmx1product01",
+  "itemUnitId": "cmx1unitcarton",
+  "factor": "12",
+  "barcode": "6221234567999",
+  "retailPrice": "110",
+  "createdAt": "2026-11-24T10:00:00.000Z",
+  "updatedAt": "2026-11-24T10:00:00.000Z",
+  "deletedAt": null,
+  "itemUnit": { "id": "cmx1unitcarton", "code": "unit-482913", "name": "كرتونة", "createdAt": "...", "updatedAt": "...", "deletedAt": null }
+}
+
+---------------------------------------------------------
+PRODUCT UNITS APIs
+---------------------------------------------------------
+
+1) Add a unit to a product
+   Method: POST
+   URL: /products/:productId/units
+
+   Validation Rules:
+   - itemUnitId: required string (an ACTIVE item unit, not the primary one)
+   - factor: required number > 0, max 4 decimal places
+   - barcode: optional string (unique)
+   - retailPrice: optional number >= 0, max 4 decimal places
+
+   Request Example:
+   POST /products/cmx1product01/units
+   {
+     "itemUnitId": "cmx1unitcarton",
+     "factor": 12,
+     "barcode": "6221234567999",
+     "retailPrice": 110
+   }
+
+   Response Example (201):
+   { "message": "Product unit created successfully", "data": { ...product unit object } }
+
+   RE-ADDING a deleted unit: if this product had this unit before and it was
+   deleted, the SAME row comes back with the values you send now (same id):
+   { "message": "Product unit restored successfully", "data": { ... } }
+   (status 201 in both cases, only the message differs)
+
+   Error Responses:
+   - 404 product not found or deleted
+     { "statusCode": 404, "message": "Product with ID cmx1product01 not found", "error": "Not Found", "code": "NOT_FOUND", "field": null }
+   - 400 the primary unit
+     { "statusCode": 400, "message": "itemUnitId is the product's primary unit (factor 1); it can't be added as another unit", "error": "Bad Request", "code": "BAD_REQUEST", "field": "itemUnitId" }
+   - 409 this unit is already defined (active) for this product -> use PATCH
+     { "statusCode": 409, "message": "This unit is already defined for this product", "error": "Conflict", "code": "ALREADY_EXISTS", "field": "itemUnitId" }
+   - 400 itemUnitId missing or deleted
+     { "statusCode": 400, "message": "itemUnitId does not exist", "error": "Bad Request", "code": "DOES_NOT_EXIST", "field": "itemUnitId" }
+   - 409 barcode used by another active product unit
+     { "statusCode": 409, "message": "barcode already exists", "error": "Conflict", "code": "ALREADY_EXISTS", "field": "barcode" }
+   - 409 barcode of a DELETED product unit (of another product / unit)
+     { "statusCode": 409, "message": "barcode belongs to a deleted product unit", "error": "Conflict", "code": "BELONGS_TO_DELETED", "field": "barcode" }
+   - 400 validation, e.g. factor 0
+     { "statusCode": 400, "message": ["factor must be a positive number"], "error": "Bad Request", "code": "VALIDATION_FAILED", "field": "factor" }
+
+2) All units of a product (for the unit dropdown)
+   Method: GET
+   URL: /products/:productId/units
+   Description: The PRIMARY unit first (factor "1"), then the other units by
+                factor (smallest first). Every entry has the same keys.
+                The primary entry has "id": null and "isPrimary": true (it is
+                not a product-unit row; its barcode / retailPrice are the
+                PRODUCT's). Use itemUnitId + factor in document lines.
+
+   Response Example (200):
+   {
+     "message": "Product units returned successfully",
+     "data": [
+       {
+         "id": null,
+         "isPrimary": true,
+         "productId": "cmx1product01",
+         "itemUnitId": "cmx1unitpiece",
+         "itemUnit": { "id": "cmx1unitpiece", "code": "unit-118200", "name": "قطعة", ... },
+         "factor": "1",
+         "barcode": "6221234567890",
+         "retailPrice": "10"
+       },
+       {
+         "id": "cmx1produnit01",
+         "isPrimary": false,
+         "productId": "cmx1product01",
+         "itemUnitId": "cmx1unitcarton",
+         "itemUnit": { "id": "cmx1unitcarton", "code": "unit-482913", "name": "كرتونة", ... },
+         "factor": "12",
+         "barcode": "6221234567999",
+         "retailPrice": "110"
+       }
+     ]
+   }
+
+   Error Response (404): product not found or deleted (same body as POST).
+
+   GET /products/:id also returns the other units in "units" (see
+   doc/week1/products.txt).
+
+3) Update a product unit
+   Method: PATCH
+   URL: /product-units/:id
+   Description: Partial update. Fields (all optional): itemUnitId, factor,
+                barcode, retailPrice. Same rules as POST.
+                null CLEARS barcode / retailPrice. null on itemUnitId /
+                factor -> 400.
+
+   Request Example:
+   { "factor": 24, "retailPrice": null }
+
+   Response Example (200):
+   { "message": "Product unit updated successfully", "data": { ...product unit object } }
+
+   Error Responses:
+   - 404 { "statusCode": 404, "message": "Product unit with id cmx1produnit01 not found", "error": "Not Found", "code": "NOT_FOUND", "field": null }
+   - 400 / 409 same bodies as POST (primary unit, already defined, does not exist, barcode)
+   - 409 changing itemUnitId to a unit this product had before and deleted
+     { "statusCode": 409, "message": "itemUnitId belongs to a deleted product unit", "error": "Conflict", "code": "BELONGS_TO_DELETED", "field": "itemUnitId" }
+     (re-add it with POST instead: it is restored)
+
+4) Delete a product unit
+   Method: DELETE
+   URL: /product-units/:id
+   Description: Soft delete.
+
+   Response Example (200):
+   { "message": "Product unit deleted successfully", "data": null }
+
+   Error Response (404): same as PATCH.
+
+Related rules in other modules
+------------------------------
+- PATCH /products/:id refuses a primaryItemUnitId that is already one of the
+  product's units (400, field primaryItemUnitId). Delete that unit first.
+- DELETE /item-unit/:id refuses an item unit used by an active product unit
+  (400 "ItemUnit is used by N product unit(s) and cannot be deleted").
+- Documents (quotations, invoices, returns) accept a line unit only if it is
+  the primary unit or one of these units, otherwise:
+  { "statusCode": 400, "message": "unit is not defined for this product", "error": "Bad Request", "code": "BAD_REQUEST", "field": "itemUnitId" }
+
+Suggested Arabic messages
+-------------------------
+  BAD_REQUEST + itemUnitId (primary unit)     هذه هي الوحدة الأساسية للصنف (معاملها 1) ولا يمكن إضافتها مرة أخرى
+  ALREADY_EXISTS + itemUnitId                 هذه الوحدة معرفة بالفعل لهذا الصنف
+  BAD_REQUEST + itemUnitId (not defined)      هذه الوحدة غير معرفة لهذا الصنف
+  BAD_REQUEST + primaryItemUnitId             هذه الوحدة معرفة كوحدة أخرى للصنف، احذفها أولًا

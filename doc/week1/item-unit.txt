@@ -127,3 +127,14 @@ APIs
    }
    Change those products' primaryItemUnitId first (PATCH /products/:id) or delete them.
    Deleted products do not count.
+
+   Error Response (400 - used as another unit of an active product, Week 2):
+   {
+     "statusCode": 400,
+     "message": "ItemUnit is used by 2 product unit(s) and cannot be deleted",
+     "error": "Bad Request",
+     "code": "BAD_REQUEST",
+     "field": null
+   }
+   Delete those product units first (DELETE /product-units/:id, see
+   doc/week2/product-units.txt). Units of deleted products do not count.

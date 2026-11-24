@@ -57,6 +57,15 @@ export class ItemUnitService {
         `ItemUnit is used by ${productsCount} product(s) and cannot be deleted`,
       );
     }
+    // Also used as another unit (carton = 12) of an active product?
+    const productUnitsCount = await this.prisma.productUnit.count({
+      where: { itemUnitId: id, deletedAt: null, product: { deletedAt: null } },
+    });
+    if (productUnitsCount > 0) {
+      throw new BadRequestException(
+        `ItemUnit is used by ${productUnitsCount} product unit(s) and cannot be deleted`,
+      );
+    }
     await this.prisma.itemUnit.update({
       where: { id },
       data: { deletedAt: new Date() },

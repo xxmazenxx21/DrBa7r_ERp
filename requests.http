@@ -338,3 +338,33 @@ Authorization: Bearer {{token}}
 {
   "isDefault": true
 }
+
+### Product units: brush carton = 12 pieces (primary unit is the piece)
+# @name createCartonUnit
+POST {{baseUrl}}/products/{{createProduct.response.body.data.id}}/units
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "itemUnitId": "<id of the carton from GET /item-unit>",
+  "factor": 12,
+  "retailPrice": 170
+}
+
+### All units of the product: primary (factor 1) first, then the others
+GET {{baseUrl}}/products/{{createProduct.response.body.data.id}}/units
+Authorization: Bearer {{token}}
+
+### Change the factor / clear the unit price
+PATCH {{baseUrl}}/product-units/{{createCartonUnit.response.body.data.id}}
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "factor": 24,
+  "retailPrice": null
+}
+
+### Delete the unit (POST it again later -> restored)
+DELETE {{baseUrl}}/product-units/{{createCartonUnit.response.body.data.id}}
+Authorization: Bearer {{token}}
