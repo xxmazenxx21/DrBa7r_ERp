@@ -1,13 +1,14 @@
 model Inventory {
-  id                 String             @id @default(cuid())
+  id                 String              @id @default(cuid())
   name               String
   branchId           String
-  branch             Branch             @relation(fields: [branchId], references: [id])
+  branch             Branch              @relation(fields: [branchId], references: [id])
   address            String
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
   deletedAt          DateTime?
   productInventories ProductInventory[]
   purchaseInvoices   PurchaseInvoice[]
   stockMovements     StockMovement[]
+  purchaseQuotations PurchaseQuotation[]
 }

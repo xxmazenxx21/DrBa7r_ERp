@@ -22,10 +22,12 @@ model User {
 
   lastLoginDate DateTime?
 
-  postedInvoices   PurchaseInvoice[] @relation("PostedInvoices")
-  createdInvoices  PurchaseInvoice[] @relation("CreatedInvoices")
-  modifiedInvoices PurchaseInvoice[] @relation("ModifiedInvoices")
-  stockMovements   StockMovement[]
+  postedInvoices     PurchaseInvoice[]   @relation("PostedInvoices")
+  createdInvoices    PurchaseInvoice[]   @relation("CreatedInvoices")
+  modifiedInvoices   PurchaseInvoice[]   @relation("ModifiedInvoices")
+  stockMovements     StockMovement[]
+  createdQuotations  PurchaseQuotation[] @relation("CreatedQuotations")
+  modifiedQuotations PurchaseQuotation[] @relation("ModifiedQuotations")
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt

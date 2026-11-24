@@ -46,4 +46,6 @@ model PurchaseInvoice {
   modifiedDate   DateTime? @updatedAt
 
   deletedAt DateTime?
+
+  convertedFromQuotation PurchaseQuotation? // the quotation this invoice came from (if any)
 }

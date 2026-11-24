@@ -4,8 +4,8 @@ FRONTEND - READ THIS FIRST (Week 2 backend changes)
 >>> This file is updated with every Week 2 task. Check the "Last update" line
 >>> below after every pull.
 
-Last update: Week 2 Tasks 1-5 (setup, numbering, currency, product units,
-stock) + "primary unit lock".
+Last update: Week 2 Tasks 1-6 (setup, numbering, currency, product units,
+stock, purchase quotations without convert-to-invoice) + "primary unit lock".
 
 
 0. Get the new backend (IMPORTANT)
@@ -85,12 +85,39 @@ PART 1 - NEW IN WEEK 2 (what exists so far)
                                         "items": [ ... ],
                                         "meta": { "page": 1, "pageSize": 20, "total": 57, "totalPages": 3 }
                                       }
-  Paginated so far: GET /stock-movements. (GET /currency is a plain array.)
+  Paginated so far: GET /stock-movements, GET /purchase-quotations.
+  (GET /currency is a plain array.)
 
-1.5 Document numbers (for the next tasks)
------------------------------------------
-  Quotations / invoices / returns will get numbers like PI-2026-000001 from
-  the server (see doc/week2/numbering.txt). You never send them.
+1.5 Document numbers
+--------------------
+  Quotations / invoices / returns get numbers like PQ-2026-000001 from the
+  server (see doc/week2/numbering.txt). You never send them.
+
+1.6 Purchase quotations (عروض أسعار الشراء)  - doc/week2/purchase-quotations.txt
+-----------------------------------------------------------------------------
+    POST   /purchase-quotations             new DRAFT quotation with its lines
+    GET    /purchase-quotations             list (PAGINATED; filters supplierId,
+                                            branchId, status, dateFrom, dateTo,
+                                            search)
+    GET    /purchase-quotations/:id         header + lines + isExpired
+    PATCH  /purchase-quotations/:id         edit (DRAFT / SENT only; "lines"
+                                            REPLACES all lines)
+    PATCH  /purchase-quotations/:id/status  DRAFT -> SENT -> ACCEPTED / REJECTED
+    DELETE /purchase-quotations/:id         soft delete (not when CONVERTED)
+  No effect on stock or money. The server computes every total: send only
+  quantities, prices and percents. Example: 10 cartons x 150, discount 10%,
+  tax 14% -> subTotal 1500, discountValue 150, taxValue 189, netTotal 1539.
+  convert-to-invoice comes with purchase invoices (next task).
+
+1.7 Errors inside document lines: "field" is the line path   -> new
+---------------------------------------------------------------------
+  For a body with lines, "field" now points at the exact line field
+  (N starts at 0), so you can highlight the wrong line:
+    { "statusCode": 400, "message": ["lines.1.quantity must be a positive number"], "error": "Bad Request", "code": "VALIDATION_FAILED", "field": "lines.1.quantity" }
+    { "statusCode": 400, "message": "unit is not defined for this product", "error": "Bad Request", "code": "BAD_REQUEST", "field": "lines.1.itemUnitId" }
+  (Before, a nested validation error had "field": "lines". Week 1 bodies have
+  no nested objects, so nothing changes there.)
+  Line discount: send discountPercent OR discountValue, not both (400).
 
 
 =====================================================================
@@ -207,6 +234,18 @@ PART 4 - ARABIC LABELS
                   sourceType = نوع المستند, sourceCode = رقم المستند,
                   reason = السبب, createdBy = بواسطة, createdDate = تاريخ التسجيل
   Product inventory: costPrice = متوسط التكلفة (it is the AVERAGE cost now)
+  Purchase quotation: code = رقم العرض, quotationDate = تاريخ العرض,
+                  validUntil = صالح حتى, status = الحالة, supplierId = المورد,
+                  branchId = الفرع, warehouseId = المخزن, subTotal = الإجمالي,
+                  discountPercent = نسبة الخصم %, discountValue = قيمة الخصم,
+                  taxPercent = نسبة الضريبة %, taxValue = قيمة الضريبة,
+                  netTotal = الصافي, convertedToInvoiceId = الفاتورة الناتجة,
+                  notes = ملاحظات, createdBy = أنشأه, modifiedBy = عدّله,
+                  isExpired = منتهي الصلاحية
+  Quotation line: productId = الصنف, itemUnitId = الوحدة,
+                  unitFactor = معامل الوحدة, quantity = الكمية,
+                  unitPrice = سعر الوحدة, discountPercent = نسبة خصم البند %,
+                  discountValue = قيمة خصم البند, lineTotal = إجمالي البند
 
 4.2 Enum values (send / receive the TEXT value)
 -----------------------------------------------
@@ -239,3 +278,5 @@ CHECKLIST
 [ ] Primary unit read-only once the product has units or stock
 [ ] Translations for INVALID_STATUS, INSUFFICIENT_STOCK, QUANTITY_EXCEEDED
 [ ] Paginated lists read data.items + data.meta
+[ ] Purchase quotations screens (list with filters, form with lines, status buttons)
+[ ] Highlight the line from "field": "lines.N.<field>"

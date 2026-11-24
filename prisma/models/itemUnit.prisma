@@ -1,10 +1,11 @@
 model ItemUnit {
-  id           String        @id @default(cuid())
-  code         String        @unique
-  name         String
-  products     Product[]
-  productUnits ProductUnit[]
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @default(now()) @updatedAt
-  deletedAt    DateTime?
+  id                     String                  @id @default(cuid())
+  code                   String                  @unique
+  name                   String
+  products               Product[]
+  productUnits           ProductUnit[]
+  purchaseQuotationLines PurchaseQuotationLine[]
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @default(now()) @updatedAt
+  deletedAt              DateTime?
 }

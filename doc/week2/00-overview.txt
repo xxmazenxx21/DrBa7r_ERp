@@ -22,6 +22,7 @@ Files in this folder
   currency.txt      /currency  (currencies + the default currency)
   product-units.txt /products/:productId/units, /product-units/:id  (carton = 12 pieces)
   stock.txt         /stock-movements, /stock-movements/item-card  (item card) + what changed in /product-inventory
+  purchase-quotations.txt  /purchase-quotations  (عروض أسعار الشراء: header + lines, statuses)
 
 
 Pagination (every NEW Week 2 list)

@@ -389,3 +389,76 @@ Authorization: Bearer {{token}}
 ### All movements, newest first (filters: productId, warehouseId, type, dateFrom, dateTo; paginated)
 GET {{baseUrl}}/stock-movements?type=ADJUSTMENT&page=1&pageSize=20
 Authorization: Bearer {{token}}
+
+### ---------- Purchase quotations (Task 6) ----------
+
+### A supplier for the purchase documents
+# @name createNileSupplier
+POST {{baseUrl}}/supplier
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "name": "النيل"
+}
+
+### Quotation: 10 cartons x 150, discount 10%, tax 14%
+# -> subTotal 1500, discountValue 150, taxValue 189, netTotal 1539 (code PQ-<year>-000001, DRAFT)
+# itemUnitId: the carton unit of the product (createCartonUnit above, factor 12)
+# @name createQuotation
+POST {{baseUrl}}/purchase-quotations
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "quotationDate": "2026-11-20",
+  "validUntil": "2026-12-31",
+  "supplierId": "{{createNileSupplier.response.body.data.id}}",
+  "branchId": "{{cairoBranchId}}",
+  "warehouseId": "{{cairoInventoryId}}",
+  "discountPercent": 10,
+  "taxPercent": 14,
+  "lines": [
+    {
+      "productId": "{{createProduct.response.body.data.id}}",
+      "itemUnitId": "{{createCartonUnit.response.body.data.itemUnitId}}",
+      "quantity": 10,
+      "unitPrice": 150
+    }
+  ]
+}
+
+### List quotations (paginated; filters supplierId, branchId, status, dateFrom, dateTo, search)
+GET {{baseUrl}}/purchase-quotations?status=DRAFT&page=1&pageSize=20
+Authorization: Bearer {{token}}
+
+### One quotation (lines + isExpired)
+GET {{baseUrl}}/purchase-quotations/{{createQuotation.response.body.data.id}}
+Authorization: Bearer {{token}}
+
+### Edit (DRAFT / SENT only): "lines" would REPLACE all lines
+PATCH {{baseUrl}}/purchase-quotations/{{createQuotation.response.body.data.id}}
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "notes": "السعر شامل التوصيل"
+}
+
+### DRAFT -> SENT
+PATCH {{baseUrl}}/purchase-quotations/{{createQuotation.response.body.data.id}}/status
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "status": "SENT"
+}
+
+### SENT -> ACCEPTED
+PATCH {{baseUrl}}/purchase-quotations/{{createQuotation.response.body.data.id}}/status
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "status": "ACCEPTED"
+}

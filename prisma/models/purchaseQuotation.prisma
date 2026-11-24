@@ -1,0 +1,59 @@
+// عروض أسعار الشراء: a supplier's prices, saved to compare suppliers.
+// NO effect on stock or money. Header + lines.
+
+// الرأس
+model PurchaseQuotation {
+  id                   String                  @id @default(cuid())
+  code                 String                  @unique // رقم العرض: PQ-2026-000001 (NumberingService)
+  quotationDate        DateTime                @db.Date // تاريخ العرض
+  validUntil           DateTime?               @db.Date // صالح حتى (>= quotationDate)
+  status               QuotationStatus         @default(DRAFT) // الحالة
+  supplierId           String // المورد
+  supplier             Supplier                @relation(fields: [supplierId], references: [id])
+  branchId             String // الفرع
+  branch               Branch                  @relation(fields: [branchId], references: [id])
+  warehouseId          String? // المخزن (optional, must belong to the branch)
+  warehouse            Inventory?              @relation(fields: [warehouseId], references: [id])
+  subTotal             Decimal                 @default(0) @db.Decimal(18, 2) // الإجمالي
+  discountPercent      Decimal                 @default(0) @db.Decimal(5, 2) // نسبة الخصم % (0-100)
+  discountValue        Decimal                 @default(0) @db.Decimal(18, 2) // قيمة الخصم
+  taxPercent           Decimal                 @default(0) @db.Decimal(5, 2) // نسبة الضريبة %
+  taxValue             Decimal                 @default(0) @db.Decimal(18, 2) // قيمة الضريبة
+  netTotal             Decimal                 @default(0) @db.Decimal(18, 2) // الصافي
+  convertedToInvoiceId String?                 @unique // الفاتورة الناتجة (when CONVERTED)
+  convertedToInvoice   PurchaseInvoice?        @relation(fields: [convertedToInvoiceId], references: [id])
+  notes                String?                 @db.VarChar(500) // ملاحظات
+  createdBy            String // أنشأه (from the token)
+  createdByUser        User                    @relation("CreatedQuotations", fields: [createdBy], references: [id])
+  createdDate          DateTime                @default(now()) // تاريخ الإنشاء
+  modifiedBy           String? // عدّله
+  modifiedByUser       User?                   @relation("ModifiedQuotations", fields: [modifiedBy], references: [id])
+  modifiedDate         DateTime?               @updatedAt // تاريخ التعديل
+  deletedAt            DateTime? // تاريخ المسح
+  lines                PurchaseQuotationLine[]
+
+  @@index([supplierId])
+  @@index([branchId])
+  @@index([quotationDate])
+}
+
+// البنود. No deletedAt: editing a draft deletes the old lines and creates new
+// ones (a draft has no effect, so there is nothing to keep).
+model PurchaseQuotationLine {
+  id                  String            @id @default(cuid())
+  purchaseQuotationId String
+  purchaseQuotation   PurchaseQuotation @relation(fields: [purchaseQuotationId], references: [id], onDelete: Cascade)
+  productId           String // الصنف
+  product             Product           @relation(fields: [productId], references: [id])
+  itemUnitId          String // الوحدة (e.g. carton)
+  itemUnit            ItemUnit          @relation(fields: [itemUnitId], references: [id])
+  unitFactor          Decimal           @db.Decimal(18, 4) // معامل الوحدة (getUnitFactor, snapshot)
+  quantity            Decimal           @db.Decimal(18, 4) // الكمية (> 0, in itemUnitId)
+  unitPrice           Decimal           @db.Decimal(18, 4) // سعر الوحدة (>= 0)
+  discountPercent     Decimal?          @db.Decimal(5, 2) // نسبة خصم البند % (one of the two)
+  discountValue       Decimal?          @db.Decimal(18, 4) // قيمة خصم البند
+  lineTotal           Decimal           @db.Decimal(18, 4) // إجمالي البند (calcLine)
+  notes               String?           @db.VarChar(250) // ملاحظات
+
+  @@index([purchaseQuotationId])
+}
