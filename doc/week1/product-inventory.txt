@@ -3,8 +3,7 @@ Product Inventory API Documentation
 
 Base URL
 --------
-Production:      https://drba7rerp-production.up.railway.app
-Local (Docker):  http://localhost:3000
+http://localhost:3000   (the backend runs on your machine with Docker, see README.md)
 
 Authentication & access
 -----------------------
@@ -22,6 +21,15 @@ A product-inventory record = the stock of ONE product inside ONE inventory
 (warehouse): quantity + cost price. A product can only have one record per
 inventory. Deleting it and adding the same product again RESTORES the old
 record (see Create).
+
+WEEK 2 - every change here is now recorded as a STOCK MOVEMENT (item card /
+كارت الصنف, see doc/week2/stock.txt):
+  POST   -> OPENING movement     (رصيد افتتاحي) with the quantity / cost
+  PATCH  -> ADJUSTMENT movement  (تسوية) with the DIFFERENCE; needs "reason"
+  DELETE -> if there is stock: ADJUSTMENT to 0 (reason "حذف الصنف من المخزن"),
+            then the soft delete. A deleted record always has quantity 0.
+costPrice is the product's AVERAGE cost in this warehouse (purchases update it).
+SERVICE products (itemType SERVICE) can't be put in a warehouse (400).
 
 NOTE: quantity / costPrice are sent as numbers but returned as strings.
       Max 4 decimal places: 100.1234 is OK, 100.12345 -> 400 (never rounded):
@@ -93,6 +101,10 @@ PRODUCT INVENTORY APIs
          (productId missing OR deleted. Was 404 "Product not found" before UPDATE 3)
    - 400 { "statusCode": 400, "message": "Product inventory already exists", "error": "Bad Request", "code": "ALREADY_EXISTS", "field": "productId" }
          (this product already has an ACTIVE record in this inventory -> use PATCH instead)
+   - 400 SERVICE product (Week 2)
+         { "statusCode": 400, "message": "Service items (SERVICE) have no stock", "error": "Bad Request", "code": "BAD_REQUEST", "field": "productId" }
+
+   Writes an OPENING movement (if quantity or cost is not 0).
 
 2) Get All Products in an Inventory
    Method: GET
@@ -157,14 +169,21 @@ PRODUCT INVENTORY APIs
    Method: PATCH
    URL: /product-inventory/:id
    Description: Sets quantity and/or costPrice directly. Intended for MANUAL
-                CORRECTION (e.g. a wrong opening quantity or cost entered by
-                mistake). Only quantity and costPrice are changed.
+                CORRECTION (stock count / جرد, a wrong opening quantity or cost).
+                Only quantity and costPrice are changed.
                 Same limits as Create (min 0, max 4 decimals); null -> 400.
+                WEEK 2 (BREAKING): writes an ADJUSTMENT movement with the
+                difference (150 -> 140 = -10), and "reason" is REQUIRED when
+                quantity or costPrice really changes:
+                - reason: string, not empty, max 250 characters (السبب)
+                Sending the same values (nothing changes) needs no reason and
+                writes no movement.
 
    Request Example:
    {
      "quantity": 150,
-     "costPrice": 13.0
+     "costPrice": 13.0,
+     "reason": "جرد"
    }
 
    Response Example (200):
@@ -181,11 +200,22 @@ PRODUCT INVENTORY APIs
    }
 
    Error Response (404): same as Get Single Product Inventory Record.
+   Error Response (400 - something changes but no reason):
+   {
+     "statusCode": 400,
+     "message": ["reason is required when quantity or costPrice changes"],
+     "error": "Bad Request",
+     "code": "VALIDATION_FAILED",
+     "field": "reason"
+   }
+   Error Response (400 - a SERVICE product can't get stock): same body as Create.
 
 5) Delete Product Inventory Record
    Method: DELETE
    URL: /product-inventory/:id
-   Description: Soft delete (sets deletedAt).
+   Description: Soft delete (sets deletedAt). If the record still has stock,
+                it is first set to 0 with an ADJUSTMENT movement (reason
+                "حذف الصنف من المخزن"), so the item card stays correct.
 
    Response Example (200):
    {

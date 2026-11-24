@@ -3,8 +3,7 @@ Users API Documentation
 
 Base URL
 --------
-Production:      https://drba7rerp-production.up.railway.app
-Local (Docker):  http://localhost:3000
+http://localhost:3000   (the backend runs on your machine with Docker, see README.md)
 
 Authentication & access
 -----------------------

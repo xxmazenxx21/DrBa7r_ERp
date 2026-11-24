@@ -25,10 +25,9 @@ NOTE: this file already uses the NEW names from UPDATE_2 (/product-inventory,
 primaryItemUnitId, ACCOUNTANT). The error bodies shown below are shortened:
 since UPDATE_2 every error ALSO has "code" and "field" (see UPDATE_2).
 
-Base URL (unchanged)
---------------------
-Production:      https://drba7rerp-production.up.railway.app
-Local (Docker):  http://localhost:3000
+Base URL
+--------
+http://localhost:3000   (the backend runs on your machine with Docker, see README.md)
 
 
 =====================================================================

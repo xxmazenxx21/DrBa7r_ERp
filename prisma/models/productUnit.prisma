@@ -1,0 +1,18 @@
+// وحدات الصنف: how many base units (pieces) one unit of THIS product holds,
+// e.g. brush carton = 12, toothpaste carton = 24.
+// The primary unit (Product.primaryItemUnitId) is NOT stored here: its factor is always 1.
+model ProductUnit {
+  id          String    @id @default(cuid())
+  productId   String // الصنف (from the URL)
+  product     Product   @relation(fields: [productId], references: [id])
+  itemUnitId  String // الوحدة (can't be the product's primary unit)
+  itemUnit    ItemUnit  @relation(fields: [itemUnitId], references: [id])
+  factor      Decimal   @db.Decimal(18, 4) // عدد القطع في الوحدة: > 0, max 4 decimals
+  barcode     String?   @unique // باركود الوحدة (optional, null clears)
+  retailPrice Decimal?  @db.Decimal(18, 4) // سعر بيع الوحدة (optional)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  @@unique([productId, itemUnitId])
+}

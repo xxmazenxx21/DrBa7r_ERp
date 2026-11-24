@@ -12,6 +12,7 @@ import { CreateProductInventoryDto } from './dto/create-product-inventory.dto';
 import { UpdateProductInventoryDto } from './dto/update-product-inventory.dto';
 import { Roles } from '../decorators/roles.decorator';
 import { Role } from '../utils/enum/enum';
+import { CurrentUser } from '../decorators/current-user.decorator';
 
 @Controller('product-inventory')
 export class ProductInventoryController {
@@ -24,10 +25,12 @@ export class ProductInventoryController {
   create(
     @Param('inventoryId') inventoryId: string,
     @Body() createProductInventoryDto: CreateProductInventoryDto,
+    @CurrentUser('sub') userId: string,
   ) {
     return this.productInventoryService.create(
       inventoryId,
       createProductInventoryDto,
+      userId,
     );
   }
 
@@ -48,13 +51,18 @@ export class ProductInventoryController {
   update(
     @Param('id') id: string,
     @Body() updateProductInventoryDto: UpdateProductInventoryDto,
+    @CurrentUser('sub') userId: string,
   ) {
-    return this.productInventoryService.update(id, updateProductInventoryDto);
+    return this.productInventoryService.update(
+      id,
+      updateProductInventoryDto,
+      userId,
+    );
   }
 
   @Delete(':id')
   @Roles(Role.SUPERADMIN)
-  remove(@Param('id') id: string) {
-    return this.productInventoryService.remove(id);
+  remove(@Param('id') id: string, @CurrentUser('sub') userId: string) {
+    return this.productInventoryService.remove(id, userId);
   }
 }

@@ -3,8 +3,7 @@ Products API Documentation
 
 Base URL
 --------
-Production:      https://drba7rerp-production.up.railway.app
-Local (Docker):  http://localhost:3000
+http://localhost:3000   (the backend runs on your machine with Docker, see README.md)
 
 Authentication & access
 -----------------------
@@ -140,8 +139,11 @@ PRODUCTS APIs
 3) Get Product By ID
    Method: GET
    URL: /products/:id
-   Description: One active product with category, primary unit, and its
-                ACTIVE stock records in every inventory (productInventories).
+   Description: One active product with category, primary unit, its
+                ACTIVE stock records in every inventory (productInventories),
+                and its other units (units: carton = 12..., Week 2, see
+                doc/week2/product-units.txt). The primary unit is NOT in
+                "units" (it is primaryItemUnit, factor 1).
 
    Response Example:
    {
@@ -167,6 +169,20 @@ PRODUCTS APIs
              "updatedAt": "2026-08-07T00:00:00.000Z",
              "deletedAt": null
            }
+         }
+       ],
+       "units": [
+         {
+           "id": "cm4produnit1",
+           "productId": "cm4product123",
+           "itemUnitId": "cm4unitcarton",
+           "factor": "12",
+           "barcode": "6221234567999",
+           "retailPrice": "170",
+           "createdAt": "2026-11-24T10:00:00.000Z",
+           "updatedAt": "2026-11-24T10:00:00.000Z",
+           "deletedAt": null,
+           "itemUnit": { "id": "cm4unitcarton", "code": "unit-482913", "name": "كرتونة", ... }
          }
        ]
      }
@@ -204,6 +220,21 @@ PRODUCTS APIs
    - 404 same as Get Product By ID
    - 400 new categoryId / primaryItemUnitId does not exist or is deleted (same body as Create)
    - 409 barcode used by another active or deleted product (same bodies as Create)
+   - 400 itemType "SERVICE" while the product is still in a warehouse (Week 2)
+     { "statusCode": 400, "message": "itemType can't be SERVICE while the product is in a warehouse; remove it from the warehouses first", "error": "Bad Request", "code": "BAD_REQUEST", "field": "itemType" }
+     (DELETE its /product-inventory records first)
+   - 400 primaryItemUnitId changed to a DIFFERENT unit after the product was used (Week 2)
+     { "statusCode": 400, "message": "primaryItemUnitId can't change: stock and units are stored in the current primary unit", "error": "Bad Request", "code": "BAD_REQUEST", "field": "primaryItemUnitId" }
+     The primary unit is LOCKED as soon as the product has:
+       - ANY stock movement (it was ever put in a warehouse with a quantity /
+         cost, see doc/week2/stock.txt). Movements are permanent, so this
+         stays locked even after the stock is deleted, or
+       - ANY active product unit (carton = 12..., see doc/week2/product-units.txt).
+     Why: every stored quantity and every unit factor is counted in the primary
+     unit (12 = 12 PIECES); changing it would silently change all of them.
+     Sending the SAME primaryItemUnitId it already has is allowed.
+     A new product with no stock and no units can still change it freely.
+     Arabic: لا يمكن تغيير الوحدة الأساسية بعد استخدام الصنف (له حركات مخزن أو وحدات)
 
 5) Delete Product
    Method: DELETE

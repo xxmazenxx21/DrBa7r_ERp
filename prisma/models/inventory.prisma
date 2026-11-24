@@ -9,4 +9,5 @@ model Inventory {
   deletedAt          DateTime?
   productInventories ProductInventory[]
   purchaseInvoices   PurchaseInvoice[]
+  stockMovements     StockMovement[]
 }

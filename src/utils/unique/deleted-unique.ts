@@ -20,6 +20,8 @@ interface SoftDeletableDelegate {
  * Values used by an ACTIVE row are not checked here: the write fails and the
  * PrismaExceptionFilter answers 409 "<field> already exists".
  * Undefined / null values are skipped (field not sent).
+ * `excludeId`: a deleted row that is being RESTORED by this same request, so its
+ * own old values don't count against it.
  *
  * @example
  * await assertNotUsedByDeleted(this.prisma.user, 'user', {
@@ -31,11 +33,16 @@ export async function assertNotUsedByDeleted(
   model: SoftDeletableDelegate,
   entityName: string,
   fields: Record<string, string | null | undefined>,
+  excludeId?: string,
 ): Promise<void> {
   for (const [field, value] of Object.entries(fields)) {
     if (value === undefined || value === null) continue;
     const deletedRow = await model.findFirst({
-      where: { [field]: value, deletedAt: { not: null } },
+      where: {
+        [field]: value,
+        deletedAt: { not: null },
+        ...(excludeId && { id: { not: excludeId } }),
+      },
       select: { id: true },
     });
     if (deletedRow) {
