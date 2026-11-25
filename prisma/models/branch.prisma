@@ -8,6 +8,7 @@ model Branch {
   users              User[]
   purchaseInvoices   PurchaseInvoice[]
   purchaseQuotations PurchaseQuotation[]
+  purchaseReturns    PurchaseReturn[]
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
   deletedAt          DateTime?

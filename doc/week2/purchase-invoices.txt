@@ -159,6 +159,7 @@ Invoice object (create / update / get one / post / cancel)
   "postedByUser": { "id": "cmx1user01", "username": "admin" },
   "cancelledByUser": null,
   "convertedFromQuotation": null,          <-- { "id", "code" } when it came from a quotation
+  "purchaseReturns": [],                   <-- its returns: { "id", "code", "returnDate", "status", "netTotal" }
   "lines": [
     {
       "id": "cmx1pil01",
@@ -244,7 +245,8 @@ PURCHASE INVOICE APIs
    URL: /purchase-invoices/:id
    Response (200): { "message": "Purchase invoice returned successfully", "data": { ...invoice object } }
    Error (404): { "statusCode": 404, "message": "Purchase invoice with id xxx not found", "error": "Not Found", "code": "NOT_FOUND", "field": null }
-   (Its purchase returns will be added here with the purchase-returns task.)
+   Also has "purchaseReturns": [ { "id", "code", "returnDate", "status", "netTotal" } ]
+   (its returns, not deleted, any status - see doc/week2/purchase-returns.txt).
 
 4) Update (DRAFT only)
    Method: PATCH
@@ -297,15 +299,15 @@ PURCHASE INVOICE APIs
      { "statusCode": 409, "message": "This invoice is DRAFT: only a POSTED invoice can be cancelled", "error": "Conflict", "code": "INVALID_STATUS", "field": "status" }
    - 400 not enough stock left
      { "statusCode": 400, "message": "Insufficient stock: available 50, requested 120", "error": "Bad Request", "code": "INSUFFICIENT_STOCK", "field": "lines.0.quantity" }
-   (With purchase returns: cancelling an invoice that has a POSTED return
-   will be refused - cancel the return first.)
+   - 400 a POSTED purchase return points to the invoice (cancel the return first)
+     { "statusCode": 400, "message": "This invoice has 1 POSTED purchase return(s): cancel the return(s) first", "error": "Bad Request", "code": "BAD_REQUEST", "field": "status" }
 
 8) Returnable quantities (for purchase returns)
    Method: GET
    URL: /purchase-invoices/:id/returnable
    Description: For every line, in the LINE's unit (cartons): bought,
-                already returned (POSTED returns), still returnable.
-                Purchase returns come with the next task, so returned is "0" now.
+                already returned (POSTED returns only; DRAFT / CANCELLED
+                returns don't count), still returnable.
    Response (200):
    {
      "message": "Returnable quantities returned successfully",

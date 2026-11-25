@@ -523,3 +523,33 @@ Authorization: Bearer {{token}}
 ### Cancel (إلغاء): stock - 120 again (PURCHASE_CANCEL). 400 INSUFFICIENT_STOCK if the goods were used
 POST {{baseUrl}}/purchase-invoices/{{createInvoice.response.body.data.id}}/cancel
 Authorization: Bearer {{token}}
+
+### ---------- Purchase returns (Task 8) ----------
+
+### Return 2 cartons of the POSTED invoice (linked): net 307.80 (DRAFT, PR-<year>-000001)
+# purchaseInvoiceLineId: the invoice line (GET /purchase-invoices/:id/returnable -> lines[i].lineId)
+# @name createReturn
+POST {{baseUrl}}/purchase-returns
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "returnDate": "2026-11-25",
+  "purchaseInvoiceId": "{{createInvoice.response.body.data.id}}",
+  "reason": "تالف",
+  "lines": [
+    { "purchaseInvoiceLineId": "{{createInvoice.response.body.data.lines[0].id}}", "quantity": 2 }
+  ]
+}
+
+### Post the return: 24 pieces leave the warehouse (PURCHASE_RETURN)
+POST {{baseUrl}}/purchase-returns/{{createReturn.response.body.data.id}}/post
+Authorization: Bearer {{token}}
+
+### Cancel the return: the 24 pieces come back (PURCHASE_RETURN_CANCEL)
+POST {{baseUrl}}/purchase-returns/{{createReturn.response.body.data.id}}/cancel
+Authorization: Bearer {{token}}
+
+### List returns (paginated; filters supplierId, purchaseInvoiceId, status, dateFrom, dateTo)
+GET {{baseUrl}}/purchase-returns?purchaseInvoiceId={{createInvoice.response.body.data.id}}
+Authorization: Bearer {{token}}

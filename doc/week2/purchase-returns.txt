@@ -1,0 +1,300 @@
+Purchase Returns API Documentation (مرتجعات الشراء)
+==================================================
+
+Base URL
+--------
+http://localhost:3000   (the backend runs on your machine with Docker, see README.md)
+
+Authentication & access
+-----------------------
+All endpoints require:  Authorization: Bearer <access_token>   (see doc/week1/auth.txt)
+Only SUPERADMIN can call them:
+  - no / invalid token  -> 401 { "statusCode": 401, "message": "Unauthorized", "error": "Unauthorized", "code": "UNAUTHORIZED", "field": null }
+  - other roles         -> 403 { "statusCode": 403, "message": "You do not have the required roles to access this resource", "error": "Forbidden", "code": "FORBIDDEN", "field": null }
+
+Response shape: every success is { "message": "...", "data": ... }
+Every error has { statusCode, message, error, code, field } (see doc/week1/00-overview.txt)
+Unknown fields (also inside lines) -> 400 "property <name> should not exist"
+Numbers are SENT as numbers and RETURNED as strings. Dates are returned as
+"YYYY-MM-DDT00:00:00.000Z": use the first 10 characters.
+
+What is it?
+-----------
+Goods you send BACK to a supplier. Same shape as a purchase invoice, the
+other way round:
+  - POST (ترحيل): the goods LEAVE the warehouse (at the current average cost;
+    the average does not change)
+  - CANCEL (إلغاء): the goods come BACK (at the same cost they left with)
+
+  Status: DRAFT (مسودة) --post--> POSTED (مُرحّل) --cancel--> CANCELLED (ملغي)
+  - DRAFT: no effect. Can be edited and deleted.
+  - POSTED: can't be edited or deleted, only cancelled.
+  Any other action -> 409 INVALID_STATUS.
+
+Two kinds of return
+-------------------
+1. LINKED to a purchase invoice (recommended): send purchaseInvoiceId.
+   - The invoice must be POSTED.
+   - supplierId = the invoice's (another one -> 400); branchId and warehouseId
+     are the invoice's when you don't send them.
+   - Each line points to an invoice line (purchaseInvoiceLineId) and only
+     sends quantity (+ notes). Product, unit and factor come from the invoice
+     line; unitCost = the invoice line's lineTotal / quantity (its price after
+     the line discount). productId / itemUnitId / unitCost sent on a linked
+     line are IGNORED.
+   - Discount and tax come from the invoice: the same share of discount
+     (return subTotal x invoice discountValue / invoice subTotal) and the same
+     taxPercent. discountPercent / discountValue / taxPercent you send are
+     IGNORED.
+   - Quantity rule: per invoice line, in the LINE's unit,
+       quantity <= bought - already returned (POSTED returns)
+     otherwise 400 QUANTITY_EXCEEDED. Checked when you save AND again when
+     you post (two drafts can point to the same line; the first one posted
+     wins). Use GET /purchase-invoices/:id/returnable to show what is left.
+   - All lines of a linked return must be invoice lines.
+2. NOT linked: you send supplierId, branchId, warehouseId and, per line,
+   productId, itemUnitId, quantity and unitCost; plus discount and tax
+   yourself (like an invoice).
+
+The example (from the task)
+---------------------------
+  Invoice PI-2026-000001: 10 cartons x 150, discount 10%, tax 14% (posted:
+  the warehouse has 220 brushes, average 10.6818).
+  Return 2 cartons of it:
+     unitCost 150 (1500 / 10), lineTotal 300
+     subTotal 300, discountValue 30, taxValue 37.80, netTotal 307.80
+  POST   -> 24 brushes leave: the warehouse has 196, average still 10.6818
+  Return 11 cartons -> 400 QUANTITY_EXCEEDED (only 8 left)
+  Cancel the invoice while this return is POSTED -> 400 (cancel the return first)
+
+Header fields (Arabic label = what the screen shows)
+----------------------------------------------------
+  field              Arabic               who              notes
+  -----------------  -------------------  ---------------  ------------------------------------------
+  id                 -                    server
+  code               رقم المرتجع           server           PR-2026-000001 (year = returnDate's year)
+  returnDate         تاريخ المرتجع         user             "2026-11-25" (required)
+  status             الحالة               server           DRAFT / POSTED / CANCELLED
+  reason             سبب الإرجاع           user, optional   تالف، زيادة، غلط... max 250; null clears
+  supplierId         المورد               user             linked: = the invoice's supplier
+  branchId           الفرع                user             linked + not sent: the invoice's
+  warehouseId        المخزن               user             linked + not sent: the invoice's; must belong to branchId
+  purchaseInvoiceId  فاتورة الشراء الأصلية  user, optional   must be POSTED; PATCH null unlinks
+  subTotal           الإجمالي             server
+  discountPercent    نسبة الخصم %         server / user    linked: the invoice's
+  discountValue      قيمة الخصم           server
+  taxPercent         نسبة الضريبة %       server / user    linked: the invoice's
+  taxValue           قيمة الضريبة         server
+  netTotal           الصافي               server
+  refundAmount       المبلغ المسترد        user, optional   cash the supplier gave back, 0..netTotal (default 0)
+  postedDate / postedBy          تاريخ الترحيل / رحّله    server
+  cancelledDate / cancelledBy    تاريخ الإلغاء / ألغاه    server
+  notes              ملاحظات              user, optional   max 500; null clears
+  createdBy / createdDate / modifiedBy / modifiedDate      server
+
+Line fields (البنود)
+-------------------
+  field                  Arabic             who              notes
+  ---------------------  -----------------  ---------------  ------------------------------------------
+  purchaseInvoiceLineId  بند الفاتورة الأصلي  user (linked)
+  productId              الصنف               user / server    linked: from the invoice line
+  itemUnitId             الوحدة              user / server    linked: from the invoice line
+  unitFactor             معامل الوحدة         server           linked: the invoice line's
+  quantity               الكمية              user             > 0, max 4 decimals, in itemUnitId
+  baseQuantity           الكمية بالقطعة       server           quantity x unitFactor (pieces)
+  unitCost               سعر الوحدة           user / server    linked: invoice lineTotal / quantity
+  lineTotal              إجمالي البند         server           quantity x unitCost
+  notes                  ملاحظات             user, optional   max 250
+  (Return lines have no line discount.)
+
+Return object (create / update / get one / post / cancel)
+---------------------------------------------------------
+{
+  "id": "cmx1pr0001",
+  "code": "PR-2026-000001",
+  "returnDate": "2026-11-25T00:00:00.000Z",
+  "status": "POSTED",
+  "reason": "تالف",
+  "supplierId": "cmx1sup01",
+  "branchId": "cmx1branch01",
+  "warehouseId": "cmx1inv01",
+  "purchaseInvoiceId": "cmx1pi0001",
+  "subTotal": "300",
+  "discountPercent": "10",
+  "discountValue": "30",
+  "taxPercent": "14",
+  "taxValue": "37.8",
+  "netTotal": "307.8",
+  "refundAmount": "0",
+  "postedDate": "2026-11-25T10:05:00.000Z",
+  "postedBy": "cmx1user01",
+  "cancelledDate": null,
+  "cancelledBy": null,
+  "notes": null,
+  "createdBy": "cmx1user01",
+  "createdDate": "2026-11-25T10:00:00.000Z",
+  "modifiedBy": null,
+  "modifiedDate": "2026-11-25T10:05:00.000Z",
+  "deletedAt": null,
+  "supplier": { "id": "cmx1sup01", "code": "SUP-123456", "name": "النيل" },
+  "branch": { "id": "cmx1branch01", "code": "branch-123456", "name": "فرع المعادي" },
+  "warehouse": { "id": "cmx1inv01", "name": "مخزن المعادي" },
+  "purchaseInvoice": { "id": "cmx1pi0001", "code": "PI-2026-000001", "invoiceDate": "2026-11-24T00:00:00.000Z", "status": "POSTED", "supplierInvoiceNumber": "NILE-778" },
+  "createdByUser": { "id": "cmx1user01", "username": "admin" },
+  "modifiedByUser": null,
+  "postedByUser": { "id": "cmx1user01", "username": "admin" },
+  "cancelledByUser": null,
+  "lines": [
+    {
+      "id": "cmx1prl01",
+      "purchaseReturnId": "cmx1pr0001",
+      "purchaseInvoiceLineId": "cmx1pil01",
+      "productId": "cmx1prod01",
+      "itemUnitId": "cmx1unitcarton",
+      "unitFactor": "12",
+      "quantity": "2",
+      "baseQuantity": "24",
+      "unitCost": "150",
+      "lineTotal": "300",
+      "notes": null,
+      "product": { "id": "cmx1prod01", "code": "PRD-123456", "name": "فرشة", "itemType": "STOCK" },
+      "itemUnit": { "id": "cmx1unitcarton", "code": "unit-482913", "name": "كرتونة" },
+      "purchaseInvoiceLine": { "id": "cmx1pil01", "quantity": "10", "unitCost": "150", "lineTotal": "1500" }
+    }
+  ]
+}
+
+---------------------------------------------------------
+PURCHASE RETURN APIs
+---------------------------------------------------------
+
+1) Create (DRAFT)
+   Method: POST
+   URL: /purchase-returns
+
+   Request Example (linked):
+   {
+     "returnDate": "2026-11-25",
+     "purchaseInvoiceId": "cmx1pi0001",
+     "reason": "تالف",
+     "lines": [ { "purchaseInvoiceLineId": "cmx1pil01", "quantity": 2 } ]
+   }
+
+   Request Example (not linked):
+   {
+     "returnDate": "2026-11-25",
+     "supplierId": "cmx1sup01",
+     "branchId": "cmx1branch01",
+     "warehouseId": "cmx1inv01",
+     "discountPercent": 5,
+     "taxPercent": 14,
+     "refundAmount": 50,
+     "lines": [ { "productId": "cmx1prod01", "itemUnitId": "cmx1unitcarton", "quantity": 1, "unitCost": 120 } ]
+   }
+
+   Response (201): { "message": "Purchase return created successfully", "data": { ...return object, "status": "DRAFT" } }
+
+   Error Responses:
+   - 400 more than is left on the invoice line
+     { "statusCode": 400, "message": "Only 8 can still be returned on this invoice line (bought 10, already returned 2)", "error": "Bad Request", "code": "QUANTITY_EXCEEDED", "field": "lines.0.quantity" }
+   - 400 the invoice is not POSTED
+     { "statusCode": 400, "message": "purchaseInvoiceId must be a POSTED invoice (this one is DRAFT)", "error": "Bad Request", "code": "BAD_REQUEST", "field": "purchaseInvoiceId" }
+   - 400 the invoice does not exist / is deleted
+     { "statusCode": 400, "message": "purchaseInvoiceId does not exist", "error": "Bad Request", "code": "DOES_NOT_EXIST", "field": "purchaseInvoiceId" }
+   - 400 another supplier on a linked return
+     { "statusCode": 400, "message": "supplierId must be the invoice's supplier", "error": "Bad Request", "code": "BAD_REQUEST", "field": "supplierId" }
+   - 400 a line of another invoice
+     { "statusCode": 400, "message": "purchaseInvoiceLineId is not a line of purchaseInvoiceId", "error": "Bad Request", "code": "BAD_REQUEST", "field": "lines.0.purchaseInvoiceLineId" }
+   - 400 a linked return line without purchaseInvoiceLineId
+     { "statusCode": 400, "message": ["lines.0.purchaseInvoiceLineId is required for a return linked to an invoice"], "error": "Bad Request", "code": "VALIDATION_FAILED", "field": "lines.0.purchaseInvoiceLineId" }
+   - 400 not linked and a field missing (supplierId, branchId, warehouseId, or a line's productId / itemUnitId / unitCost)
+     { "statusCode": 400, "message": ["supplierId is required for a return that is not linked to an invoice"], "error": "Bad Request", "code": "VALIDATION_FAILED", "field": "supplierId" }
+     { "statusCode": 400, "message": ["lines.0.productId is required for a return that is not linked to an invoice"], "error": "Bad Request", "code": "VALIDATION_FAILED", "field": "lines.0.productId" }
+   - 400 refund more than the net
+     { "statusCode": 400, "message": "refundAmount must not be more than netTotal (307.8)", "error": "Bad Request", "code": "BAD_REQUEST", "field": "refundAmount" }
+   - 400 warehouse of another branch, a unit the product doesn't have, a
+     deleted product / supplier, no lines: same bodies as purchase invoices
+
+2) List
+   Method: GET
+   URL: /purchase-returns
+   Description: PAGINATED, newest returnDate first. Items = header + supplier /
+                branch / warehouse / purchaseInvoice { id, code } +
+                "_count": { "lines": N }. NO lines.
+   Query (all optional): supplierId, purchaseInvoiceId, status, dateFrom,
+   dateTo (returnDate, inclusive), page, pageSize.
+   Response (200): { "message": "Purchase returns returned successfully", "data": { "items": [ ... ], "meta": { ... } } }
+
+3) Get one
+   Method: GET
+   URL: /purchase-returns/:id
+   Response (200): { "message": "Purchase return returned successfully", "data": { ...return object } }
+   Error (404): { "statusCode": 404, "message": "Purchase return with id xxx not found", "error": "Not Found", "code": "NOT_FOUND", "field": null }
+
+4) Update (DRAFT only)
+   Method: PATCH
+   URL: /purchase-returns/:id
+   Description: Any field from Create, all optional. The request is merged
+                with what is saved and the WHOLE return is checked and
+                computed again. "lines", when sent, REPLACES all lines.
+                "purchaseInvoiceId": null unlinks (then send unlinked lines
+                and supplier / branch / warehouse). A NEW purchaseInvoiceId
+                takes that invoice's supplier / branch / warehouse.
+   Response (200): { "message": "Purchase return updated successfully", "data": { ...return object } }
+   Error (409): { "statusCode": 409, "message": "This return is POSTED: only a DRAFT return can be edited", "error": "Conflict", "code": "INVALID_STATUS", "field": "status" }
+
+5) Delete (DRAFT only)
+   Method: DELETE
+   URL: /purchase-returns/:id
+   Response (200): { "message": "Purchase return deleted successfully", "data": null }
+   Error (409): { "statusCode": 409, "message": "Only a DRAFT return can be deleted (cancel a POSTED return instead)", "error": "Conflict", "code": "INVALID_STATUS", "field": "status" }
+
+6) Post (ترحيل) - the goods leave the warehouse
+   Method: POST
+   URL: /purchase-returns/:id/post
+   Body: none
+   Description: DRAFT -> POSTED. Every STOCK line takes baseQuantity pieces
+                out (a PURCHASE_RETURN line in the item card, at the current
+                average; the average does not change). SERVICE lines don't
+                touch stock. Linked: the quantity rule is checked again.
+                All or nothing.
+   Response (201): { "message": "Purchase return posted successfully", "data": { ...return object, "status": "POSTED" } }
+   Errors:
+   - 409 not DRAFT: { "statusCode": 409, "message": "This return is POSTED: only a DRAFT return can be posted", "error": "Conflict", "code": "INVALID_STATUS", "field": "status" }
+   - 400 QUANTITY_EXCEEDED (another return was posted first), same body as Create
+   - 400 the invoice was cancelled meanwhile
+     { "statusCode": 400, "message": "purchaseInvoiceId must be a POSTED invoice (this one is CANCELLED)", "error": "Bad Request", "code": "BAD_REQUEST", "field": "purchaseInvoiceId" }
+   - 400 not enough stock
+     { "statusCode": 400, "message": "Insufficient stock: available 0, requested 5", "error": "Bad Request", "code": "INSUFFICIENT_STOCK", "field": "lines.0.quantity" }
+
+7) Cancel (إلغاء) - the goods come back
+   Method: POST
+   URL: /purchase-returns/:id/cancel
+   Body: none
+   Description: POSTED -> CANCELLED. Every piece the posting took out comes
+                back at the SAME cost it left with (a PURCHASE_RETURN_CANCEL
+                line in the item card). Its quantities count as returnable
+                again on the invoice.
+   Response (201): { "message": "Purchase return cancelled successfully", "data": { ...return object, "status": "CANCELLED" } }
+   Error (409): { "statusCode": 409, "message": "This return is DRAFT: only a POSTED return can be cancelled", "error": "Conflict", "code": "INVALID_STATUS", "field": "status" }
+
+Related changes in /purchase-invoices
+-------------------------------------
+- GET /purchase-invoices/:id now has "purchaseReturns": [ { "id", "code",
+  "returnDate", "status", "netTotal" } ] (not deleted, any status).
+- GET /purchase-invoices/:id/returnable: returnedQuantity = POSTED returns
+  (was always 0).
+- POST /purchase-invoices/:id/cancel is refused while a POSTED return points
+  to the invoice:
+  { "statusCode": 400, "message": "This invoice has 1 POSTED purchase return(s): cancel the return(s) first", "error": "Bad Request", "code": "BAD_REQUEST", "field": "status" }
+
+Suggested Arabic messages
+-------------------------
+  QUANTITY_EXCEEDED                       الكمية أكبر من المسموح بإرجاعه
+  INSUFFICIENT_STOCK                      الكمية المتاحة في المخزن غير كافية
+  INVALID_STATUS                          لا يمكن تنفيذ العملية في حالة المستند الحالية
+  BAD_REQUEST + purchaseInvoiceId         يجب اختيار فاتورة شراء مُرحّلة
+  BAD_REQUEST + supplierId                المورد يجب أن يكون مورد الفاتورة
+  BAD_REQUEST + lines.N.purchaseInvoiceLineId   هذا البند ليس من بنود الفاتورة
+  BAD_REQUEST + refundAmount              المبلغ المسترد أكبر من صافي المرتجع
+  BAD_REQUEST (cancel invoice) + status   ألغِ المرتجع أولًا

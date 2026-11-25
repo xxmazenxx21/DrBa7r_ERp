@@ -4,9 +4,9 @@ FRONTEND - READ THIS FIRST (Week 2 backend changes)
 >>> This file is updated with every Week 2 task. Check the "Last update" line
 >>> below after every pull.
 
-Last update: Week 2 Tasks 1-7 (setup, numbering, currency, product units,
-stock, purchase quotations + convert-to-invoice, purchase invoices) +
-"primary unit lock".
+Last update: Week 2 Tasks 1-8 (setup, numbering, currency, product units,
+stock, purchase quotations + convert-to-invoice, purchase invoices, purchase
+returns) + "primary unit lock".
 
 
 0. Get the new backend (IMPORTANT)
@@ -87,7 +87,7 @@ PART 1 - NEW IN WEEK 2 (what exists so far)
                                         "meta": { "page": 1, "pageSize": 20, "total": 57, "totalPages": 3 }
                                       }
   Paginated so far: GET /stock-movements, GET /purchase-quotations,
-  GET /purchase-invoices.
+  GET /purchase-invoices, GET /purchase-returns.
   (GET /currency is a plain array.)
 
 1.5 Document numbers
@@ -135,6 +135,26 @@ PART 1 - NEW IN WEEK 2 (what exists so far)
   Example: 10 cartons x 150, discount 10%, tax 14%, CREDIT paid 500 ->
   net 1539, remaining 1039; after POST the warehouse has 220 brushes at an
   average of 10.6818; POST again -> 409 INVALID_STATUS.
+  An invoice with a POSTED return can't be cancelled (cancel the return first).
+
+1.6c Purchase returns (مرتجعات الشراء)  - doc/week2/purchase-returns.txt
+----------------------------------------------------------------------
+    POST   /purchase-returns              new DRAFT return
+    GET    /purchase-returns              list (PAGINATED; filters supplierId,
+                                          purchaseInvoiceId, status, dateFrom, dateTo)
+    GET    /purchase-returns/:id          header + lines + the original invoice
+    PATCH  /purchase-returns/:id          edit (DRAFT only; "lines" REPLACES all)
+    DELETE /purchase-returns/:id          soft delete (DRAFT only)
+    POST   /purchase-returns/:id/post     ترحيل: stock goes DOWN (at the average cost)
+    POST   /purchase-returns/:id/cancel   إلغاء: stock comes back (same cost)
+  LINKED to an invoice (send purchaseInvoiceId, recommended): each line sends
+  purchaseInvoiceLineId + quantity only; product, unit, price, discount and
+  tax come from the invoice. Per line: quantity <= bought - already returned,
+  else 400 QUANTITY_EXCEEDED (use GET /purchase-invoices/:id/returnable).
+  NOT linked: send supplier, branch, warehouse, product, unit, price,
+  discount and tax yourself.
+  Example: return 2 of the 10 cartons -> net 307.80; after POST the warehouse
+  has 196 brushes, average still 10.6818. Returning 11 -> QUANTITY_EXCEEDED.
 
 1.7 Errors inside document lines: "field" is the line path   -> new
 ---------------------------------------------------------------------
@@ -246,10 +266,11 @@ Same error shape as always: { statusCode, message, error, code, field }.
 Example:
   { "statusCode": 400, "message": "Insufficient stock: available 196, requested 197", "error": "Bad Request", "code": "INSUFFICIENT_STOCK", "field": "quantity" }
 
-INVALID_STATUS is returned by purchase quotations and purchase invoices.
-INSUFFICIENT_STOCK is returned when cancelling a purchase invoice whose goods
-were already used. QUANTITY_EXCEEDED is not returned yet (it arrives with
-purchase returns). Add all the translations now.
+INVALID_STATUS: quotations, invoices and returns (action not allowed now).
+INSUFFICIENT_STOCK: cancelling an invoice whose goods were used, posting a
+return of goods that are not in the warehouse.
+QUANTITY_EXCEEDED: a return of more than is left on the invoice line
+("field": "lines.N.quantity").
 
 
 =====================================================================
@@ -293,6 +314,11 @@ PART 4 - ARABIC LABELS
                   expiryDate = تاريخ الصلاحية
   Returnable:     quantity = الكمية المشتراة, returnedQuantity = الكمية المرتجعة,
                   remainingQuantity = المتبقي للإرجاع
+  Purchase return: code = رقم المرتجع, returnDate = تاريخ المرتجع,
+                  reason = سبب الإرجاع, purchaseInvoiceId = فاتورة الشراء الأصلية,
+                  refundAmount = المبلغ المسترد, (other header fields: as the invoice)
+  Return line:    purchaseInvoiceLineId = بند الفاتورة الأصلي, unitCost = سعر الوحدة,
+                  baseQuantity = الكمية بالقطعة, lineTotal = إجمالي البند
 
 4.2 Enum values (send / receive the TEXT value)
 -----------------------------------------------
@@ -329,3 +355,5 @@ CHECKLIST
 [ ] Highlight the line from "field": "lines.N.<field>"
 [ ] Purchase invoices screens (form with lines, payment, currency; Post and Cancel buttons; read-only when not DRAFT)
 [ ] Currency delete: show the "used by invoices" error
+[ ] Purchase returns screens: pick a POSTED invoice, show GET .../returnable, send purchaseInvoiceLineId + quantity
+[ ] Invoice screen: show its purchaseReturns; explain the "cancel the return first" error

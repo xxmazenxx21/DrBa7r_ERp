@@ -24,6 +24,7 @@ Files in this folder
   stock.txt         /stock-movements, /stock-movements/item-card  (item card) + what changed in /product-inventory
   purchase-quotations.txt  /purchase-quotations  (عروض أسعار الشراء: header + lines, statuses)
   purchase-invoices.txt    /purchase-invoices    (فواتير الشراء: post = stock in, cancel = stock out)
+  purchase-returns.txt     /purchase-returns     (مرتجعات الشراء: post = stock out, cancel = stock back)
 
 
 Pagination (every NEW Week 2 list)
