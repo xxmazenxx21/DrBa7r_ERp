@@ -189,7 +189,7 @@ The docs are in [`doc/`](doc/), organized by week, with one `.txt` file per modu
 
 Every error response has a stable `code` (e.g. `ALREADY_EXISTS`, `NOT_FOUND`) and a `field`. The frontend translates errors with these, not with the English `message`.
 
-`requests.http` has ready-to-run sample requests (VS Code REST Client / JetBrains HTTP client).
+`requests.http` has ready-to-run sample requests (VS Code REST Client / JetBrains HTTP client). Its section **"WEEK 2 - THE BIG TEST"** runs the whole purchasing flow in 16 requests on an empty database (step 6 above), from a quotation to the item card.
 
 ---
 

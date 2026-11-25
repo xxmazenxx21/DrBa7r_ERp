@@ -136,8 +136,9 @@ Other scripts: `npm run build` (= `prisma generate && nest build`), `npm run lin
 ## Week 2 progress
 
 - The task list is `doc/week2/Week 2 Tasks.pdf`. Do **ONE task per request**: read section 0, section 1 and that task only (they are in Arabic; tables give the Prisma fields, the APIs, the rules and the files). If something is unclear or conflicts with the code, ask before guessing.
-- **Done** (on `dev`): Task 1 setup (`@CurrentUser`, pagination, document totals, 3 error codes), Task 2 numbering (Week 2 enums, `DocumentSequence`, `NumberingService`), Task 3 currency, Task 4 product-units (+ follow-up "lock primary unit once used"), Task 5 stock (`StockMovement`, `StockService`, item card), Task 6 purchase-quotations without convert-to-invoice (migration `purchase_quotations`), Task 7 purchase-invoices (migration `purchase_invoice_lines`), Task 6 convert-to-invoice, Task 8 purchase-returns (migration `purchase_returns`).
-- **Next:** Task 9 docs + the big end-to-end test.
+- **Done** (on `dev`): Task 1 setup (`@CurrentUser`, pagination, document totals, 3 error codes), Task 2 numbering (Week 2 enums, `DocumentSequence`, `NumberingService`), Task 3 currency, Task 4 product-units (+ follow-up "lock primary unit once used"), Task 5 stock (`StockMovement`, `StockService`, item card), Task 6 purchase-quotations without convert-to-invoice (migration `purchase_quotations`), Task 7 purchase-invoices (migration `purchase_invoice_lines`), Task 6 convert-to-invoice, Task 8 purchase-returns (migration `purchase_returns`), Task 9 docs + the big test (`requests.http` section "WEEK 2 - THE BIG TEST", W2-0…W2-16, verified on an empty DB: final stock 218, average 10.6818).
+- **Next:** the owner reviews `dev` and merges it into `main` (not done by Claude). Then Week 3 (sales) the same way: one task per request, one commit per task.
+- `requests.http` layout: Week 1 samples first, then "WEEK 2 - THE BIG TEST" (self-contained, uses `w2*` request names and `@w2token`, must run on an empty DB in order), then "WEEK 2 - MORE EXAMPLES". Keep the big test green when you change Week 2 code; add new weeks as new sections.
 - **The 4 rules of the week:**
   1. Stock is always counted in the primary unit (convert document lines with `getUnitFactor`).
   2. Only `StockService` writes `ProductInventory` / `StockMovement`.

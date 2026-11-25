@@ -4,9 +4,14 @@ FRONTEND - READ THIS FIRST (Week 2 backend changes)
 >>> This file is updated with every Week 2 task. Check the "Last update" line
 >>> below after every pull.
 
-Last update: Week 2 Tasks 1-8 (setup, numbering, currency, product units,
-stock, purchase quotations + convert-to-invoice, purchase invoices, purchase
-returns) + "primary unit lock".
+Last update: WEEK 2 COMPLETE (Tasks 1-9: setup, numbering, currency, product
+units, stock, purchase quotations + convert-to-invoice, purchase invoices,
+purchase returns, docs + the big test) + "primary unit lock".
+
+Try the whole Week 2 flow in 16 requests: requests.http, section
+"WEEK 2 - THE BIG TEST" (W2-0 ... W2-16), on an empty database
+(docker compose down -v, then docker compose up -d --build). The flow,
+statuses and stock effects are summed up in doc/week2/00-overview.txt.
 
 
 0. Get the new backend (IMPORTANT)
