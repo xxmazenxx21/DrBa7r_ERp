@@ -33,8 +33,9 @@ Rules:
   - Quantities are always in the PRIMARY unit (pieces): buying 10 cartons of
     12 = a movement of +120.
   - Nobody creates a movement by hand: there is NO POST here. Movements come
-    from documents (purchase invoices / returns, later this week) and from
-    /product-inventory (opening balance and manual adjustment).
+    from documents (posting / cancelling purchase invoices and purchase
+    returns) and from /product-inventory (opening balance and manual
+    adjustment).
   - SERVICE products never have stock.
 
 Average cost (متوسط التكلفة المرجح)
@@ -49,10 +50,10 @@ Movement types (type)
 ---------------------
   OPENING                 رصيد افتتاحي        POST /product-inventory (and Week 1 stock, see below)
   ADJUSTMENT              تسوية               PATCH / DELETE /product-inventory
-  PURCHASE                شراء                posting a purchase invoice (later task)
-  PURCHASE_CANCEL         إلغاء فاتورة شراء    cancelling a posted invoice (later task)
-  PURCHASE_RETURN         مرتجع شراء           posting a purchase return (later task)
-  PURCHASE_RETURN_CANCEL  إلغاء مرتجع شراء     cancelling a posted return (later task)
+  PURCHASE                شراء                POST /purchase-invoices/:id/post
+  PURCHASE_CANCEL         إلغاء فاتورة شراء    POST /purchase-invoices/:id/cancel
+  PURCHASE_RETURN         مرتجع شراء           POST /purchase-returns/:id/post
+  PURCHASE_RETURN_CANCEL  إلغاء مرتجع شراء     POST /purchase-returns/:id/cancel
 
 Movement object (Arabic label = what the screen shows)
 -----------------------------------------------------
@@ -179,10 +180,13 @@ Old (Week 1) stock
 Stock that existed before this update got ONE OPENING movement each, with
 reason "Week 1 opening balance", so every item card adds up from day one.
 
-Errors from stock changes (later tasks will show them on documents)
---------------------------------------------------------------------
-  INSUFFICIENT_STOCK (400, field quantity): taking out more than the warehouse has
-    { "statusCode": 400, "message": "Insufficient stock: available 196, requested 197", "error": "Bad Request", "code": "INSUFFICIENT_STOCK", "field": "quantity" }
+Errors from stock changes (returned by the documents)
+-----------------------------------------------------
+  INSUFFICIENT_STOCK (400, field "lines.N.quantity"): posting a purchase return,
+  or cancelling a purchase invoice, needs more than the warehouse has
+    { "statusCode": 400, "message": "Insufficient stock: available 50, requested 120", "error": "Bad Request", "code": "INSUFFICIENT_STOCK", "field": "lines.0.quantity" }
+  (/product-inventory never returns it: a manual adjustment just sets the new
+  quantity, which can't be negative.)
     Arabic: الكمية المتاحة في المخزن غير كافية
 
 Suggested Arabic messages

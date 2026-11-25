@@ -36,8 +36,11 @@ How to read the docs
   1. Week 1 files first (if you haven't): doc/FRONTEND_WEEK1_READ_FIRST.txt,
      doc/FRONTEND_WEEK1_UPDATE_2.txt, doc/FRONTEND_WEEK1_UPDATE_3.txt
   2. THIS file (what is new / changed in Week 2)
-  3. doc/week2/00-overview.txt (pagination, error codes, how totals work)
-  4. the module files in doc/week2/ (exact bodies for every endpoint)
+  3. doc/week2/week2flow.txt (the whole Week 2 flow in ONE self-contained
+     file: the 16 steps with exact requests / responses / errors, state
+     machines, dropdowns, build order - read it right after this file)
+  4. doc/week2/00-overview.txt (pagination, error codes, how totals work)
+  5. the module files in doc/week2/ (exact bodies for every endpoint)
 Everything from Week 1 still applies: SUPERADMIN only, { message, data },
 errors with "code" + "field", soft delete, numbers returned as strings,
 null clears nullable fields.
@@ -79,7 +82,9 @@ PART 1 - NEW IN WEEK 2 (what exists so far)
                                          warehouse, oldest first, with the
                                          balance after every line
   READ ONLY: there is no POST. Movements are written by the server when stock
-  changes (product-inventory now, purchase invoices / returns later).
+  changes: product-inventory (OPENING, ADJUSTMENT), posting / cancelling a
+  purchase invoice (PURCHASE, PURCHASE_CANCEL) and posting / cancelling a
+  purchase return (PURCHASE_RETURN, PURCHASE_RETURN_CANCEL).
   Old Week 1 stock got one OPENING movement each ("Week 1 opening balance").
 
 1.4 Paginated lists (new Week 2 lists only)
@@ -265,11 +270,12 @@ Same error shape as always: { statusCode, message, error, code, field }.
                               current status (e.g. posting an invoice that
                               is already posted)
   INSUFFICIENT_STOCK  400     not enough quantity in the warehouse          الكمية المتاحة في المخزن غير كافية
-                              (field "quantity")
+                              (field "lines.N.quantity" = the document line)
   QUANTITY_EXCEEDED   400     returning more than was bought                الكمية أكبر من المسموح بإرجاعه
+                              (field "lines.N.quantity")
 
-Example:
-  { "statusCode": 400, "message": "Insufficient stock: available 196, requested 197", "error": "Bad Request", "code": "INSUFFICIENT_STOCK", "field": "quantity" }
+Example (cancelling an invoice whose goods were partly used):
+  { "statusCode": 400, "message": "Insufficient stock: available 50, requested 120", "error": "Bad Request", "code": "INSUFFICIENT_STOCK", "field": "lines.0.quantity" }
 
 INVALID_STATUS: quotations, invoices and returns (action not allowed now).
 INSUFFICIENT_STOCK: cancelling an invoice whose goods were used, posting a

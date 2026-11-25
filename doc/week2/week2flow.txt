@@ -1,0 +1,728 @@
+DrBa7r ERP - WEEK 2 FLOW (purchasing + stock), start to finish
+==============================================================
+
+This file is SELF-CONTAINED: you can understand and build the whole Week 2
+frontend from it alone. Every term has its Arabic screen label next to it,
+e.g. Post (ترحيل). Every request, field, status rule and error below was
+checked against the backend code.
+
+Backend: run it locally with Docker (git pull origin main, then
+docker compose up -d --build). Base URL: http://localhost:3000
+Login: POST /auth/login { "username": "admin", "password": "admin123" }
+-> data.access_token. Send it on EVERY request:  Authorization: Bearer <token>
+Only SUPERADMIN users can call the API for now (any other role gets 403).
+
+General API rules (they apply to everything below):
+  - Every success response is   { "message": "...", "data": ... }
+  - Every error response is     { "statusCode", "message", "error", "code", "field" }
+    Translate errors with "code" (+ "field"), never by reading "message".
+    "message" is a string, or an ARRAY of strings for validation errors.
+  - Numbers are SENT as JSON numbers and RETURNED as STRINGS ("1539", "10.6818").
+    Use Number(value) before doing any math or comparing.
+  - Dates are SENT as "YYYY-MM-DD" and RETURNED as "YYYY-MM-DDT00:00:00.000Z":
+    show the first 10 characters.
+  - Unknown fields in a body or query string -> 400 "property X should not exist".
+  - Delete is always a SOFT delete (the row is hidden, kept in the database).
+  - In PATCH, a field not sent = unchanged; null CLEARS an optional text/date field
+    (e.g. notes, validUntil, dueDate, reason); null on a required field -> 400.
+
+
+=====================================================================
+1. WHAT WEEK 2 IS
+=====================================================================
+Week 2 adds PURCHASING (المشتريات) and real STOCK TRACKING (المخزون):
+  - currencies (العملات) and product units (وحدات الصنف: carton = 12 pieces),
+  - every stock change is recorded as a stock movement (حركة مخزن), so each
+    product has an item card (كارت الصنف) and a weighted average cost,
+  - three purchase documents: quotation (عرض سعر) -> invoice (فاتورة) -> return (مرتجع).
+The server computes every total and every stock change; the frontend sends
+quantities, prices and percents and shows what the server returns.
+
+The brush example (فرشة) - used everywhere in this file:
+  1. The Maadi warehouse (مخزن المعادي) has 100 brushes at 10 each.
+  2. Supplier "النيل" sends a quotation: a carton (12 brushes) costs 150.
+  3. We buy 10 cartons, discount 10%, tax 14%:
+       subTotal 1500 - discount 150 + tax 189 = netTotal 1539
+  4. We post the invoice: +120 brushes, each costs 1500 x 0.9 / 120 = 11.25
+       stock 220, average cost (100 x 10 + 120 x 11.25) / 220 = 10.6818
+  5. 2 cartons are broken: a return of 2 cartons = 300 - 30 + 37.80 = netTotal 307.80
+  6. We post the return: -24 brushes -> stock 196, average still 10.6818.
+
+
+=====================================================================
+2. THE BIG PICTURE
+=====================================================================
+
+  SETUP (once)                                         stock effect
+  ------------------------------------------------------------------------
+  [Currency العملة]  EGP = default (العملة الأساسية)     none
+         |
+  [Product units وحدات الصنف]  brush: carton = 12      none
+         |
+  [Opening stock رصيد افتتاحي]  POST /product-inventory  +100  (OPENING)
+         |
+  DOCUMENTS (every day)
+  ------------------------------------------------------------------------
+  [Purchase Quotation عرض سعر شراء]                     none (no effect at all)
+     DRAFT -> SENT -> ACCEPTED
+         |  convert-to-invoice (تحويل لفاتورة)
+         v
+  [Purchase Invoice فاتورة شراء]  DRAFT                  none while DRAFT
+         |  Post (ترحيل)                                 +120  (PURCHASE), new average
+         |  Cancel (إلغاء)                               -120  (PURCHASE_CANCEL)
+         v
+  [Purchase Return مرتجع شراء]  DRAFT                    none while DRAFT
+         |  Post (ترحيل)                                 -24   (PURCHASE_RETURN), average unchanged
+         |  Cancel (إلغاء)                               +24   (PURCHASE_RETURN_CANCEL)
+         v
+  [Item card كارت الصنف]  shows every movement above, in order, with the balance after each
+
+  Manual stock edit (تسوية) at any time: PATCH /product-inventory/:id
+  -> ADJUSTMENT movement with the difference (needs a reason).
+
+
+=====================================================================
+3. GLOSSARY
+=====================================================================
+  Document (مستند)          A paper with a number and a date: quotation, invoice, return.
+  Header / Lines (رأس / بنود) A document is ONE header row (supplier, date, totals) +
+                            one line per product (product, unit, quantity, price).
+  Draft (مسودة)             Saved but has NO effect. Can be edited and deleted.
+  Post (ترحيل)              Final confirmation: the stock moves and the document is locked.
+  Cancel (إلغاء)            Reverses a posted document with an opposite stock movement.
+                            The document stays, marked CANCELLED (ملغي), read only.
+  Base unit / Factor        Stock is always counted in the product's PRIMARY unit
+  (الوحدة الأساسية / المعامل)  (e.g. piece قطعة). A carton with factor 12 = 12 pieces.
+  Stock movement (حركة مخزن) One line for every stock in (+) or out (-). Never edited or deleted.
+  Item card (كارت الصنف)     All movements of one product in one warehouse, in order,
+                            with the balance after each one.
+  Average cost (متوسط التكلفة) The cost of one piece after mixing old and new stock
+                            (weighted average). Stock in changes it; stock out does not.
+  Exchange rate (سعر الصرف)  How many default-currency units (EGP) one unit of the
+                            invoice's currency is worth on the invoice date. Stock is
+                            always valued in the default currency.
+
+
+=====================================================================
+4. THE 4 RULES OF THE WEEK (and what they mean for the UI)
+=====================================================================
+  1. Stock is always in the PRIMARY unit (pieces), even when you buy in cartons.
+     UI: show quantities in the line's unit on documents (10 cartons), but show
+     stock / item card numbers in pieces (120). baseQuantity = pieces.
+  2. Only the server changes stock; every change is a stock movement.
+     UI: there is NO "create movement" screen. Stock changes only through:
+     opening stock, manual adjustment, posting / cancelling invoices and returns.
+     Refresh stock screens after those actions.
+  3. The server computes ALL totals.
+     UI: you may show a live preview while typing, but always display the
+     totals from the server response after saving. Never send subTotal,
+     discountValue (except a fixed discount, see section 9), taxValue,
+     netTotal, remainingAmount, lineTotal, baseQuantity, unitFactor, code,
+     status, createdBy...
+  4. A POSTED document is never edited or deleted, only cancelled.
+     UI: when status is POSTED or CANCELLED, show the document READ ONLY:
+     no Edit / Delete buttons; show Cancel only when POSTED.
+
+
+=====================================================================
+5. THE FULL FLOW, STEP BY STEP (the 16 steps of the big test)
+=====================================================================
+These are exactly the requests in requests.http, section
+"WEEK 2 - THE BIG TEST" (W2-0 ... W2-16), run on an EMPTY database
+(docker compose down -v, then docker compose up -d --build).
+Ids below are shown as <...Id>; take them from earlier responses (data.id).
+All requests need  Authorization: Bearer <token>  and
+Content-Type: application/json.
+
+---------------------------------------------------------------------
+STEP 0 - Login (تسجيل الدخول)
+---------------------------------------------------------------------
+Screen: Login. User types username + password, clicks "دخول".
+  POST /auth/login
+  { "username": "admin", "password": "admin123" }
+Response 201: data.access_token (keep it), data.user { id, username, role: "SUPERADMIN" }
+Errors: 401 UNAUTHORIZED "Invalid credentials" -> "اسم المستخدم أو كلمة المرور غير صحيحة"
+
+---------------------------------------------------------------------
+STEP 1 - Create the default currency (العملة الأساسية)
+---------------------------------------------------------------------
+Screen: Currencies (العملات) -> "إضافة عملة", ticks "عملة أساسية".
+  POST /currency
+  { "code": "EGP", "name": "جنيه مصري", "symbol": "ج.م", "isDefault": true }
+Response 201 "Currency created successfully":
+  data = { id, code: "EGP", name, symbol: "ج.م", isDefault: true, createdAt, updatedAt, deletedAt: null }
+Stock: no change.
+Errors:
+  400 VALIDATION_FAILED field "code" (not exactly 3 capital letters)  -> "كود العملة 3 حروف إنجليزية كبيرة (مثل EGP)"
+  409 ALREADY_EXISTS field "code"                                     -> "كود العملة مستخدم بالفعل"
+  409 BELONGS_TO_DELETED field "code"                                 -> "كود العملة مرتبط بعملة محذوفة"
+
+---------------------------------------------------------------------
+STEP 2 - Setup data with Week 1 screens (branch, warehouse, category, units, product, supplier)
+---------------------------------------------------------------------
+Screens: Branches, Warehouses, Categories, Item units, Products, Suppliers (all Week 1).
+  POST /branch                          { "name": "فرع المعادي", "address": "المعادي" }
+  POST /inventory/branch/<branchId>     { "name": "مخزن المعادي", "address": "المعادي" }
+  POST /categories                      { "name": "أدوات العناية" }
+  POST /item-unit                       { "name": "قطعة" }      -> <pieceId>
+  POST /item-unit                       { "name": "كرتونة" }    -> <cartonId>
+  POST /products                        { "name": "فرشة", "categoryId": "<categoryId>",
+                                          "primaryItemUnitId": "<pieceId>",
+                                          "retailPrice": 15, "wholesalePrice": 13, "bulkWholesalePrice": 12 }
+                                        (itemType defaults to "STOCK" مخزني)
+  POST /supplier                        { "name": "النيل" }
+All 201. Codes (branch-..., PRD-..., SUP-...) are generated by the server.
+Stock: no change.
+
+---------------------------------------------------------------------
+STEP 3 - Carton = 12 pieces (وحدات الصنف)
+---------------------------------------------------------------------
+Screen: Product details -> tab "وحدات الصنف" -> "إضافة وحدة": picks the unit
+"كرتونة", types 12 in "عدد القطع في الوحدة".
+  POST /products/<brushId>/units
+  { "itemUnitId": "<cartonId>", "factor": 12 }
+  (optional: "barcode": "...", "retailPrice": 170)
+Response 201 "Product unit created successfully":
+  data = { id, productId, itemUnitId: "<cartonId>", factor: "12", barcode: null,
+           retailPrice: null, ..., itemUnit: { id, code, name: "كرتونة" } }
+Stock: no change.
+Errors:
+  400 BAD_REQUEST field "itemUnitId" (it is the product's primary unit)
+      -> "هذه هي الوحدة الأساسية للصنف (معاملها 1) ولا يمكن إضافتها مرة أخرى"
+  409 ALREADY_EXISTS field "itemUnitId" (this unit is already defined)
+      -> "هذه الوحدة معرفة بالفعل لهذا الصنف"
+  400 DOES_NOT_EXIST field "itemUnitId"  -> "الوحدة غير موجودة أو محذوفة"
+  400 VALIDATION_FAILED field "factor" (must be > 0, max 4 decimals) -> "عدد القطع يجب أن يكون أكبر من صفر"
+  409 ALREADY_EXISTS / BELONGS_TO_DELETED field "barcode"  -> "الباركود مستخدم بالفعل"
+(Re-adding a unit that was deleted brings the same row back:
+ 201 "Product unit restored successfully".)
+
+---------------------------------------------------------------------
+STEP 4 - Opening stock: 100 brushes at 10 (رصيد افتتاحي)
+---------------------------------------------------------------------
+Screen: Warehouse stock (أرصدة المخزن) -> "إضافة صنف للمخزن": product, quantity, cost.
+  POST /product-inventory/inventory/<warehouseId>
+  { "productId": "<brushId>", "quantity": 100, "costPrice": 10 }
+Response 201 "Product inventory created successfully":
+  data = { id: <stockRowId>, productId, inventoryId, quantity: "100", costPrice: "10", deletedAt: null }
+Stock / item card: + OPENING (رصيد افتتاحي) 100 at 10, balance 100, average 10.
+Errors:
+  400 BAD_REQUEST field "productId" "Service items (SERVICE) have no stock"
+      -> "الأصناف الخدمية ليس لها مخزون"   (hide SERVICE products in this picker)
+  400 ALREADY_EXISTS field "productId" "Product inventory already exists"
+      -> "الصنف موجود بالفعل في هذا المخزن (عدّل الرصيد بدلًا من ذلك)"
+  400 DOES_NOT_EXIST field "productId" -> "الصنف غير موجود أو محذوف"
+  404 NOT_FOUND "Inventory not found" (wrong warehouse in the URL)
+
+---------------------------------------------------------------------
+STEP 5 - Purchase quotation: 10 cartons x 150, discount 10%, tax 14%
+---------------------------------------------------------------------
+Screen: Purchase quotations (عروض أسعار الشراء) -> "عرض جديد". Header: date,
+valid until, supplier, branch, warehouse (optional), discount %, tax %, notes.
+Lines table: product, unit (dropdown from the product's units), quantity,
+unit price, optional line discount. Clicks "حفظ".
+  POST /purchase-quotations
+  {
+    "quotationDate": "2026-11-20",
+    "validUntil": "2026-12-31",
+    "supplierId": "<supplierId>",
+    "branchId": "<branchId>",
+    "warehouseId": "<warehouseId>",
+    "discountPercent": 10,
+    "taxPercent": 14,
+    "lines": [
+      { "productId": "<brushId>", "itemUnitId": "<cartonId>", "quantity": 10, "unitPrice": 150 }
+    ]
+  }
+Response 201 "Purchase quotation created successfully":
+  data.code "PQ-2026-000001", status "DRAFT", subTotal "1500", discountPercent "10",
+  discountValue "150", taxPercent "14", taxValue "189", netTotal "1539", isExpired false,
+  lines[0] = { unitFactor "12", quantity "10", unitPrice "150", lineTotal "1500",
+               product { name "فرشة" }, itemUnit { name "كرتونة" } }
+Stock: no change (a quotation never touches stock).
+Errors:
+  400 VALIDATION_FAILED field "lines" (no lines)                -> "يجب إضافة بند واحد على الأقل"
+  400 VALIDATION_FAILED field "lines.N.quantity" (0, negative, > 4 decimals) -> "الكمية يجب أن تكون أكبر من صفر"
+  400 VALIDATION_FAILED field "lines.N.discountValue" (both line discounts sent)
+      -> "أدخل نسبة الخصم أو قيمة الخصم فقط، وليس الاثنين"
+  400 BAD_REQUEST field "lines.N.itemUnitId" "unit is not defined for this product"
+      -> "هذه الوحدة غير معرفة لهذا الصنف"
+  400 DOES_NOT_EXIST field "lines.N.productId" / "supplierId" / "branchId" -> "<الحقل> غير موجود أو محذوف"
+  400 BAD_REQUEST field "warehouseId" "warehouseId must belong to branchId"
+      -> "المخزن يجب أن يكون تابعًا لنفس الفرع"
+  400 BAD_REQUEST field "validUntil" "validUntil must be on or after quotationDate"
+      -> "تاريخ الصلاحية يجب أن يكون بعد تاريخ العرض"
+  400 BAD_REQUEST field "discountValue" / "lines.N.discountValue" (discount bigger than the amount)
+      -> "قيمة الخصم أكبر من المبلغ"
+  ("N" = line index starting at 0: highlight that line.)
+
+---------------------------------------------------------------------
+STEP 6 - Send, then accept the quotation (مُرسل ثم مقبول)
+---------------------------------------------------------------------
+Screen: Quotation details. Buttons "إرسال" (DRAFT) then "قبول" (SENT).
+  PATCH /purchase-quotations/<quotationId>/status   { "status": "SENT" }
+  PATCH /purchase-quotations/<quotationId>/status   { "status": "ACCEPTED" }
+Response 200 "Purchase quotation status updated successfully": data.status "SENT", then "ACCEPTED".
+Stock: no change.
+Errors:
+  409 INVALID_STATUS field "status" (move not allowed, e.g. DRAFT -> ACCEPTED)
+      -> "لا يمكن تنفيذ العملية في حالة المستند الحالية"
+  400 VALIDATION_FAILED field "status" (value other than SENT / ACCEPTED / REJECTED)
+
+---------------------------------------------------------------------
+STEP 7 - Convert the quotation into a CREDIT invoice (تحويل لفاتورة آجل)
+---------------------------------------------------------------------
+Screen: Quotation details (status ACCEPTED) -> button "تحويل لفاتورة" opens a
+small dialog: payment type (نقدي / آجل), invoice date, warehouse (only if the
+quotation has none). Then open the new invoice.
+  POST /purchase-quotations/<quotationId>/convert-to-invoice
+  { "paymentType": "CREDIT", "invoiceDate": "2026-11-24" }
+Response 201 "Purchase quotation converted to invoice successfully":
+  data.quotation: status "CONVERTED", convertedToInvoiceId = <invoiceId>
+  data.invoice:   code "PI-2026-000001", status "DRAFT", paymentType "CREDIT",
+                  currency EGP, exchangeRate "1", subTotal "1500", discountValue "150",
+                  taxValue "189", netTotal "1539", paidAmount "0", remainingAmount "1539",
+                  convertedFromQuotation { id, code: "PQ-2026-000001" },
+                  lines[0] = { quantity "10", unitFactor "12", baseQuantity "120",
+                               unitCost "150", lineTotal "1500", stockUnitCost "0" }
+Stock: no change (the invoice is a DRAFT).
+Errors:
+  409 INVALID_STATUS field "status" (quotation not ACCEPTED, or already converted)
+  400 VALIDATION_FAILED field "warehouseId" "warehouseId is required: the quotation has no warehouse"
+      -> "اختر المخزن (العرض بدون مخزن)"
+  400 BAD_REQUEST field "currencyId" "There is no default currency..." -> "لا توجد عملة أساسية، أضف عملة أولًا"
+  400 DOES_NOT_EXIST field "lines.N.productId" (a product was deleted since the quotation)
+
+---------------------------------------------------------------------
+STEP 8 - Record a payment of 500 on the draft invoice (المدفوع)
+---------------------------------------------------------------------
+Screen: Invoice form (DRAFT) -> field "المدفوع" = 500 -> "حفظ".
+  PATCH /purchase-invoices/<invoiceId>
+  { "paidAmount": 500 }
+Response 200 "Purchase invoice updated successfully":
+  data.paidAmount "500", remainingAmount "1039", status "DRAFT"
+Stock: no change.
+Errors:
+  400 BAD_REQUEST field "paidAmount" "paidAmount must not be more than netTotal (1539)"
+      -> "المدفوع أكبر من صافي الفاتورة"
+  409 INVALID_STATUS field "status" (invoice is not DRAFT any more)
+  (CASH invoices: paidAmount is always = netTotal, whatever you send.)
+
+---------------------------------------------------------------------
+STEP 9 - Post the invoice (ترحيل الفاتورة)
+---------------------------------------------------------------------
+Screen: Invoice details (DRAFT) -> button "ترحيل" (ask for confirmation:
+"بعد الترحيل لا يمكن تعديل الفاتورة").
+  POST /purchase-invoices/<invoiceId>/post          (no body)
+Response 201 "Purchase invoice posted successfully":
+  data.status "POSTED", postedDate, postedBy, lines[0].stockUnitCost "11.25"
+Stock / item card: + PURCHASE (شراء) 120 at 11.25 (totalCost "1350"),
+  balance 220, average 10.6818, sourceCode "PI-2026-000001".
+Errors:
+  409 INVALID_STATUS field "status" (not DRAFT)
+  400 DOES_NOT_EXIST field "lines.N.productId" (product deleted after the draft) / "warehouseId"
+  400 VALIDATION_FAILED field "lines.N.expiryDate" (product with hasExpiryDate and no expiry date)
+      -> "تاريخ الصلاحية مطلوب لهذا الصنف"
+
+---------------------------------------------------------------------
+STEP 10 - Post the same invoice again (ترحيل مرة ثانية)
+---------------------------------------------------------------------
+  POST /purchase-invoices/<invoiceId>/post
+Response 409:
+  { "statusCode": 409, "message": "This invoice is POSTED: only a DRAFT invoice can be posted",
+    "error": "Conflict", "code": "INVALID_STATUS", "field": "status" }
+  -> "لا يمكن تنفيذ العملية في حالة المستند الحالية"
+Stock: no change (a double click can never post twice). UI: hide "ترحيل"
+when the status is not DRAFT.
+
+---------------------------------------------------------------------
+STEP 11 - Return 2 cartons of the invoice (مرتجع مربوط بالفاتورة)
+---------------------------------------------------------------------
+Screen: Invoice details (POSTED) -> button "عمل مرتجع", or Purchase returns
+(مرتجعات الشراء) -> "مرتجع جديد" -> pick a POSTED invoice. The screen loads
+GET /purchase-invoices/<invoiceId>/returnable and shows each invoice line with
+"المشترى / المرتجع / المتبقي"; the user types the quantity to return (in the
+line's unit) and a reason.
+  POST /purchase-returns
+  {
+    "returnDate": "2026-11-25",
+    "purchaseInvoiceId": "<invoiceId>",
+    "reason": "تالف",
+    "lines": [ { "purchaseInvoiceLineId": "<invoiceLineId>", "quantity": 2 } ]
+  }
+  (<invoiceLineId> = invoice data.lines[i].id, or returnable data.lines[i].lineId)
+Response 201 "Purchase return created successfully":
+  data.code "PR-2026-000001", status "DRAFT", subTotal "300", discountPercent "10",
+  discountValue "30", taxPercent "14", taxValue "37.8", netTotal "307.8", refundAmount "0",
+  supplier / branch / warehouse = the invoice's,
+  lines[0] = { purchaseInvoiceLineId, unitFactor "12", quantity "2", baseQuantity "24",
+               unitCost "150", lineTotal "300" }
+Stock: no change (DRAFT).
+Errors:
+  400 QUANTITY_EXCEEDED field "lines.N.quantity"
+      "Only 8 can still be returned on this invoice line (bought 10, already returned 2)"
+      -> "الكمية أكبر من المسموح بإرجاعه"
+  400 BAD_REQUEST field "purchaseInvoiceId" "purchaseInvoiceId must be a POSTED invoice (this one is DRAFT)"
+      -> "يجب اختيار فاتورة شراء مُرحّلة"
+  400 BAD_REQUEST field "lines.N.purchaseInvoiceLineId" "purchaseInvoiceLineId is not a line of purchaseInvoiceId"
+      -> "هذا البند ليس من بنود الفاتورة"
+  400 BAD_REQUEST field "supplierId" "supplierId must be the invoice's supplier"
+  400 BAD_REQUEST field "refundAmount" (more than netTotal) -> "المبلغ المسترد أكبر من صافي المرتجع"
+
+---------------------------------------------------------------------
+STEP 12 - Post the return (ترحيل المرتجع)
+---------------------------------------------------------------------
+Screen: Return details (DRAFT) -> button "ترحيل".
+  POST /purchase-returns/<returnId>/post            (no body)
+Response 201 "Purchase return posted successfully": data.status "POSTED"
+Stock / item card: - PURCHASE_RETURN (مرتجع شراء) -24 at 10.6818 (totalCost "-256.36"),
+  balance 196, average still 10.6818, sourceCode "PR-2026-000001".
+Errors:
+  409 INVALID_STATUS field "status" (not DRAFT)
+  400 QUANTITY_EXCEEDED field "lines.N.quantity" (another return of the same line was posted first)
+  400 INSUFFICIENT_STOCK field "lines.N.quantity" "Insufficient stock: available X, requested Y"
+      -> "الكمية المتاحة في المخزن غير كافية"
+  400 BAD_REQUEST field "purchaseInvoiceId" (the invoice was cancelled meanwhile)
+
+---------------------------------------------------------------------
+STEP 13 - Try to cancel the invoice (إلغاء الفاتورة)
+---------------------------------------------------------------------
+Screen: Invoice details (POSTED) -> button "إلغاء".
+  POST /purchase-invoices/<invoiceId>/cancel        (no body)
+Response 400:
+  { "statusCode": 400, "message": "This invoice has 1 POSTED purchase return(s): cancel the return(s) first",
+    "error": "Bad Request", "code": "BAD_REQUEST", "field": "status" }
+  -> "لا يمكن إلغاء الفاتورة لأن عليها مرتجع مُرحّل، ألغِ المرتجع أولًا"
+Stock: no change (nothing happens).
+
+---------------------------------------------------------------------
+STEP 14 - Cancel the return (إلغاء المرتجع)
+---------------------------------------------------------------------
+Screen: Return details (POSTED) -> button "إلغاء".
+  POST /purchase-returns/<returnId>/cancel          (no body)
+Response 201 "Purchase return cancelled successfully": data.status "CANCELLED",
+  cancelledDate, cancelledBy
+Stock / item card: + PURCHASE_RETURN_CANCEL (إلغاء مرتجع شراء) +24 at 10.6818
+  (the same cost it left with), balance 220. The 2 cartons count as returnable again.
+Errors: 409 INVALID_STATUS field "status" (not POSTED)
+(Now the invoice could be cancelled: it would write PURCHASE_CANCEL -120.)
+
+---------------------------------------------------------------------
+STEP 15 - Stock count: set the stock to 218 (تسوية جرد)
+---------------------------------------------------------------------
+Screen: Warehouse stock -> row "فرشة" -> "تعديل الرصيد": quantity 218, reason
+"جرد" (the reason box is REQUIRED when quantity or cost changes).
+  PATCH /product-inventory/<stockRowId>
+  { "quantity": 218, "reason": "جرد" }
+Response 200 "Product inventory updated successfully":
+  data = { quantity: "218", costPrice: "10.6818", ... }
+Stock / item card: - ADJUSTMENT (تسوية) -2, reason "جرد", balance 218.
+Errors:
+  400 VALIDATION_FAILED field "reason" ["reason is required when quantity or costPrice changes"]
+      -> "سبب التسوية مطلوب عند تغيير الكمية أو التكلفة"
+  400 VALIDATION_FAILED field "quantity" (negative, > 4 decimals)
+
+---------------------------------------------------------------------
+STEP 16 - The item card (كارت الصنف)
+---------------------------------------------------------------------
+Screen: Item card -> pick product "فرشة" + warehouse "مخزن المعادي".
+  GET /stock-movements/item-card?productId=<brushId>&warehouseId=<warehouseId>
+Response 200 "Item card returned successfully":
+  data.product { id, code, name: "فرشة" }, data.warehouse { id, name },
+  data.quantity "218", data.avgCost "10.6818",
+  data.movements (OLDEST first):
+    type                    quantity  unitCost  totalCost  balanceAfter  avgCostAfter  sourceCode       reason
+    OPENING                 100       10        1000       100           10            -                -
+    PURCHASE                120       11.25     1350       220           10.6818       PI-2026-000001   -
+    PURCHASE_RETURN         -24       10.6818   -256.36    196           10.6818       PR-2026-000001   -
+    PURCHASE_RETURN_CANCEL  24        10.6818   256.36     220           10.6818       PR-2026-000001   -
+    ADJUSTMENT              -2        10.6818   -21.36     218           10.6818       -                جرد
+  Check: 100 + 120 - 24 + 24 - 2 = 218
+Errors:
+  400 VALIDATION_FAILED (productId / warehouseId missing)
+  404 NOT_FOUND "Product with ID x not found" / "Inventory with id x not found"
+
+
+=====================================================================
+6. STATE MACHINES (status -> actions -> buttons -> editable fields)
+=====================================================================
+6.1 Purchase quotation (عرض سعر شراء) - status field "status" (QuotationStatus)
+  status            allowed actions (API)                          buttons to show                    editable?
+  ----------------  ---------------------------------------------  ---------------------------------  ---------------------
+  DRAFT مسودة        PATCH /:id, DELETE /:id, PATCH /:id/status SENT  حفظ، حذف، إرسال                     everything (header + lines)
+  SENT مُرسل          PATCH /:id, DELETE /:id, /status ACCEPTED|REJECTED حفظ، حذف، قبول، رفض                everything (header + lines)
+  ACCEPTED مقبول      POST /:id/convert-to-invoice, DELETE /:id       تحويل لفاتورة، حذف                   read only
+  REJECTED مرفوض      DELETE /:id                                     حذف                                 read only
+  CONVERTED تم التحويل (nothing)                                      "فتح الفاتورة" (convertedToInvoiceId) read only, can't be deleted
+  isExpired = true when validUntil has passed: show a "منتهي" badge (it does not block anything).
+
+6.2 Purchase invoice (فاتورة شراء) - DocumentStatus
+  status            allowed actions (API)                          buttons to show                    editable?
+  ----------------  ---------------------------------------------  ---------------------------------  ---------------------
+  DRAFT مسودة        PATCH /:id, DELETE /:id, POST /:id/post          حفظ، حذف، ترحيل                     everything (header, lines, payment, currency)
+  POSTED مُرحّل       POST /:id/cancel, GET /:id/returnable            إلغاء، عمل مرتجع                    read only (paidAmount too)
+  CANCELLED ملغي      (nothing)                                       -                                  read only
+
+6.3 Purchase return (مرتجع شراء) - DocumentStatus
+  status            allowed actions (API)                          buttons to show                    editable?
+  ----------------  ---------------------------------------------  ---------------------------------  ---------------------
+  DRAFT مسودة        PATCH /:id, DELETE /:id, POST /:id/post          حفظ، حذف، ترحيل                     everything
+  POSTED مُرحّل       POST /:id/cancel                                 إلغاء                               read only
+  CANCELLED ملغي      (nothing)                                       -                                  read only
+
+Any action that is not allowed -> 409 INVALID_STATUS (field "status").
+Show a status badge (شارة الحالة) on every document and list row, with the
+Arabic labels above.
+
+
+=====================================================================
+7. LINKS BETWEEN DOCUMENTS AND THE BLOCKS
+=====================================================================
+7.1 Quotation -> Invoice (convert-to-invoice)
+  - Only an ACCEPTED quotation. The invoice copies supplier, branch, lines
+    (unitPrice -> unitCost), discount and tax; currency = the default (rate 1).
+  - The quotation becomes CONVERTED (convertedToInvoiceId); the invoice shows
+    convertedFromQuotation { id, code }. Show both as links.
+  - The invoice is a normal DRAFT: edit payment, supplier invoice number,
+    expiry dates... before posting.
+
+7.2 Invoice -> Returns
+  - GET /purchase-invoices/:id lists purchaseReturns [{ id, code, returnDate, status, netTotal }].
+  - GET /purchase-invoices/:id/returnable gives, per invoice line (in the line's
+    unit): quantity (bought), returnedQuantity (POSTED returns only), remainingQuantity.
+  - A return line points to an invoice line with purchaseInvoiceLineId.
+    Product, unit, price, discount and tax come from the invoice.
+
+7.3 The blocks (what the server refuses, and the error)
+  - Cancel an invoice that has a POSTED return
+      -> 400 BAD_REQUEST field "status" -> "ألغِ المرتجع أولًا"
+  - Return more than bought minus already returned
+      -> 400 QUANTITY_EXCEEDED field "lines.N.quantity" -> "الكمية أكبر من المسموح بإرجاعه"
+  - Post a return / cancel an invoice when the goods are not in the warehouse
+      -> 400 INSUFFICIENT_STOCK field "lines.N.quantity" -> "الكمية المتاحة في المخزن غير كافية"
+  - Delete a currency used by purchase invoices
+      -> 400 BAD_REQUEST "Currency is used by N purchase invoice(s) and cannot be deleted"
+         -> "لا يمكن حذف العملة لأنها مستخدمة في فواتير شراء"
+  - Delete / unset the default currency
+      -> 400 BAD_REQUEST field "isDefault" -> "اجعل عملة أخرى أساسية أولًا"
+  - Change a product's primary unit once it has stock movements or product units
+      -> 400 BAD_REQUEST field "primaryItemUnitId"
+         -> "لا يمكن تغيير الوحدة الأساسية بعد استخدام الصنف (له حركات مخزن أو وحدات)"
+  - SERVICE items (خدمي): can't be put in a warehouse (400 field "productId");
+    a product can't become SERVICE while it is in a warehouse (400 field "itemType");
+    SERVICE lines on invoices / returns are allowed but never move stock.
+  - Delete an item unit used by a product unit -> 400 BAD_REQUEST
+      "ItemUnit is used by N product unit(s) and cannot be deleted"
+
+
+=====================================================================
+8. DROPDOWNS AND LOOKUPS (which GET fills each select)
+=====================================================================
+  form field                          fill it with                                       note
+  ----------------------------------  -------------------------------------------------  -------------------------------
+  currency (العملة)                    GET /currency                                      default first; plain array
+  supplier (المورد)                    GET /supplier                                      plain array
+  branch (الفرع)                       GET /branch                                        plain array
+  warehouse (المخزن)                   GET /inventory?branchId=<branchId>                 only the chosen branch's
+  product on lines (الصنف)              GET /products                                      plain array (itemType STOCK/SERVICE)
+  product for stock (الصنف)             GET /products, filter itemType = "STOCK"           SERVICE can't have stock
+  unit on a line (الوحدة)               GET /products/<productId>/units                    primary first: factor "1", id null
+  unit for a product unit (الوحدة)      GET /item-unit                                     not the product's primary unit
+  category (التصنيف)                    GET /categories                                    plain array
+  paymentType (طريقة الدفع)             fixed: CASH نقدي, CREDIT آجل
+  quotation status filter              fixed: DRAFT, SENT, ACCEPTED, REJECTED, CONVERTED
+  invoice / return status filter       fixed: DRAFT, POSTED, CANCELLED
+  movement type filter                 fixed: OPENING, ADJUSTMENT, PURCHASE, PURCHASE_CANCEL,
+                                              PURCHASE_RETURN, PURCHASE_RETURN_CANCEL
+  invoice to return (فاتورة الشراء)     GET /purchase-invoices?status=POSTED&supplierId=<id>  paginated (data.items)
+  invoice lines to return              GET /purchase-invoices/<invoiceId>/returnable        remainingQuantity = max to type
+
+
+=====================================================================
+9. HOW THE SERVER COMPUTES THE TOTALS
+=====================================================================
+  lineTotal     = quantity x price - line discount                   (4 decimals)
+                  price = unitPrice (quotation) / unitCost (invoice, return)
+                  line discount = discountPercent % of it, OR a fixed discountValue (not both)
+  subTotal      = sum of lineTotal                                   (2 decimals)
+  discountValue = subTotal x discountPercent / 100
+                  (if discountPercent is 0 or not sent: the fixed discountValue you send)
+  taxValue      = (subTotal - discountValue) x taxPercent / 100
+  netTotal      = subTotal - discountValue + taxValue
+  Rounding: half up.
+
+  Brush invoice: 10 x 150 = 1500; discount 10% = 150; tax 14% of 1350 = 189; net 1539.
+  Brush return: 2 x 150 = 300; discount 30 (the invoice's share: 300 x 150 / 1500);
+                tax 14% of 270 = 37.80; net 307.80.
+
+  Invoice payment:   CASH   -> paidAmount = netTotal, remainingAmount 0
+                     CREDIT -> paidAmount 0 .. netTotal (default 0), remainingAmount = netTotal - paidAmount
+  Return refund:     refundAmount 0 .. netTotal (default 0)
+  Stock cost of one piece when an invoice is POSTED (tax not included):
+     stockUnitCost = lineTotal x (1 - discountValue / subTotal) x exchangeRate / baseQuantity
+     brush: 1500 x 0.9 x 1 / 120 = 11.25
+  New average after a stock IN: (old qty x old avg + in qty x in cost) / (old qty + in qty)
+     brush: (100 x 10 + 120 x 11.25) / 220 = 10.6818
+  Stock OUT (return post, invoice cancel) leaves at the current average; the average stays.
+
+  The frontend must NOT send (the server rejects or ignores them):
+    - totals: subTotal, taxValue, netTotal, remainingAmount, lineTotal, baseQuantity,
+      unitFactor, stockUnitCost  (-> 400 "property X should not exist")
+    - codes and statuses: code, status (status changes only via the action endpoints)
+    - user ids: createdBy, modifiedBy, postedBy, cancelledBy (taken from the token)
+    - stock quantities on documents (stock is computed from the lines when posting)
+    - on a LINKED return line: productId / itemUnitId / unitCost are ignored
+      (taken from the invoice line); discount and tax are ignored (taken from the invoice)
+  Limits: quantities, prices and costs max 4 decimals; money (paidAmount,
+  refundAmount, header discountValue) max 2; percents 0-100 with max 2 decimals.
+  Too many decimals -> 400 VALIDATION_FAILED (the server never rounds your input).
+
+
+=====================================================================
+10. LISTS
+=====================================================================
+Paginated lists take ?page=1&pageSize=20 (page >= 1, pageSize 1-100, default 20)
+and return data as an OBJECT:
+  { "items": [ ... ], "meta": { "page": 1, "pageSize": 20, "total": 57, "totalPages": 3 } }
+A page after the last one returns "items": [] (not an error).
+Bad page / pageSize / filter value / unknown parameter -> 400 VALIDATION_FAILED.
+
+  list                        paginated  filters (all optional)
+  --------------------------  ---------  ---------------------------------------------------------------
+  GET /purchase-quotations     yes        supplierId, branchId, status, dateFrom, dateTo, search
+                                          (search = part of the code, the supplier name or the notes)
+  GET /purchase-invoices       yes        supplierId, branchId, warehouseId, status, paymentType,
+                                          dateFrom, dateTo, search (code, supplier invoice number,
+                                          supplier name, notes)
+  GET /purchase-returns        yes        supplierId, purchaseInvoiceId, status, dateFrom, dateTo
+  GET /stock-movements         yes        productId, warehouseId, type, dateFrom, dateTo (newest first)
+  GET /currency                NO         - (plain array, default currency first)
+  GET /products/:id/units      NO         - (plain array, primary unit first)
+  GET /stock-movements/item-card NO       productId + warehouseId REQUIRED (one object, movements oldest first)
+  GET /purchase-invoices/:id/returnable NO  - (one object with lines)
+  Week 1 lists (/branch, /supplier, /products, /inventory...)  NO (plain arrays)
+
+  Document lists: newest document date first. Each item = the header +
+  supplier / branch / warehouse (+ currency for invoices, + purchaseInvoice for
+  returns) + "_count": { "lines": N } + (quotations) isExpired. NO lines: open
+  one document (GET /:id) to get its lines.
+  dateFrom / dateTo: "YYYY-MM-DD", both inclusive.
+
+
+=====================================================================
+11. BUILD ORDER FOR THE FRONTEND, MODULE BY MODULE
+=====================================================================
+Shared components to build first:
+  - StatusBadge (شارة الحالة): DRAFT / SENT / ACCEPTED / REJECTED / CONVERTED / POSTED / CANCELLED
+  - LinesTable (جدول البنود): rows of product + unit + quantity + price + line discount +
+    lineTotal (read only) + notes; add / remove rows; errors on "lines.N.<field>"
+    highlight row N
+  - TotalsBox (صندوق الإجماليات): subTotal, discount %, discount value, tax %, tax value,
+    netTotal (+ paid / remaining for invoices, refund for returns) - values from the server
+  - DocumentActions: Post (ترحيل) / Cancel (إلغاء) / Delete / Edit buttons driven by
+    the state machines in section 6, each with a confirmation dialog
+  - PaginatedTable: reads data.items + data.meta, sends page / pageSize + filters
+  - ErrorTranslator: maps code (+ field) to the Arabic messages in this file
+
+11.1 Currency (العملات)
+  Screens: currency list + add / edit dialog.
+  Endpoints: GET/POST /currency, GET/PATCH/DELETE /currency/:id.
+  Body: code (3 capital letters, only on create or edit), name, symbol (optional),
+  isDefault (true makes it THE default; the old default becomes false by itself).
+  UI: "أساسية" badge on the default; no delete button on it; "اجعلها أساسية"
+  button on the others (PATCH { "isDefault": true }); never send isDefault false
+  for the default (400).
+  Done when: EGP is created as default; adding USD and making it default turns
+  EGP to non-default after a refresh; deleting the default shows the Arabic error.
+
+11.2 Product units (وحدات الصنف)
+  Screens: a "وحدات الصنف" tab on the product screen.
+  Endpoints: GET/POST /products/:productId/units, PATCH/DELETE /product-units/:id.
+  Body: itemUnitId, factor (> 0), barcode (optional), retailPrice (optional).
+  UI: the list shows the primary unit first (factor 1, id null: no edit/delete
+  on it); make the product's primary unit read-only once it has units or stock.
+  Done when: brush carton = 12 appears with factor "12"; adding "قطعة" (the
+  primary) shows the error; the unit dropdown on document lines lists قطعة (1) and كرتونة (12).
+
+11.3 Stock movements & item card (حركات المخزن وكارت الصنف)
+  Screens: item card (product + warehouse pickers, table oldest first, current
+  quantity + average on top); movements list (paginated, filters).
+  Endpoints: GET /stock-movements/item-card?productId=&warehouseId=, GET /stock-movements.
+  Columns: date (movementDate), type (Arabic label), document (sourceCode),
+  in (+ quantity), out (- quantity), unit cost, balance after, average after,
+  reason, user (createdByUser.username).
+  Done when: the brush card shows the 5 rows of step 16 and quantity 218.
+
+11.4 Product-inventory changes (أرصدة المخزن)
+  Screens: the existing warehouse stock screen.
+  Endpoints: POST /product-inventory/inventory/:inventoryId, PATCH / DELETE /product-inventory/:id.
+  Changes: PATCH needs "reason" (max 250) when quantity or costPrice changes;
+  hide SERVICE products in "add to warehouse"; costPrice is now the average cost.
+  Done when: adding 100 @ 10 writes OPENING +100; editing to 90 without reason
+  shows the Arabic error, with reason "جرد" writes ADJUSTMENT -10.
+
+11.5 Purchase quotations (عروض أسعار الشراء)
+  Screens: list (paginated, filters, status badge, isExpired badge), form
+  (header + LinesTable + TotalsBox), details with status buttons and "تحويل لفاتورة".
+  Endpoints: GET/POST /purchase-quotations, GET/PATCH/DELETE /purchase-quotations/:id,
+  PATCH /purchase-quotations/:id/status, POST /purchase-quotations/:id/convert-to-invoice.
+  Header body: quotationDate, validUntil?, supplierId, branchId, warehouseId?,
+  discountPercent?, discountValue?, taxPercent?, notes?, lines[].
+  Line body: productId, itemUnitId, quantity, unitPrice, discountPercent? OR discountValue?, notes?.
+  PATCH: send "lines" only to REPLACE all lines (send the full list).
+  Done when: the brush quotation gives 1500 / 150 / 189 / 1539 and code
+  PQ-2026-000001; DRAFT -> SENT -> ACCEPTED; convert opens PI-2026-000001 (DRAFT)
+  and the quotation shows CONVERTED with a link.
+
+11.6 Purchase invoices (فواتير الشراء)
+  Screens: list (paginated, filters), form (header + payment + currency +
+  LinesTable + TotalsBox), details with Post / Cancel / "عمل مرتجع", its returns,
+  and a link to the source quotation.
+  Endpoints: GET/POST /purchase-invoices, GET/PATCH/DELETE /purchase-invoices/:id,
+  POST /purchase-invoices/:id/post, POST /purchase-invoices/:id/cancel,
+  GET /purchase-invoices/:id/returnable.
+  Header body: invoiceDate, dueDate? (>= invoiceDate), supplierInvoiceNumber?,
+  paymentType (CASH | CREDIT), supplierId, branchId, warehouseId (required, same
+  branch), currencyId? (not sent = default), exchangeRate? (required for a
+  non-default currency; must be 1 or absent for the default), discountPercent?,
+  discountValue?, taxPercent?, paidAmount? (CREDIT only), notes?, lines[].
+  Line body: productId, itemUnitId, quantity, unitCost, discountPercent? OR
+  discountValue?, batchNumber? (max 50), expiryDate? (REQUIRED when the product
+  has hasExpiryDate = true), notes?.
+  UI: hide paidAmount for CASH; show exchangeRate only for a non-default currency;
+  show stockUnitCost (read only) on POSTED invoices.
+  Done when: the converted brush invoice with paid 500 shows remaining 1039;
+  posting makes the item card show PURCHASE +120 at 11.25 (220 @ 10.6818);
+  posting again shows the INVALID_STATUS message; cancel with a posted return
+  shows "ألغِ المرتجع أولًا".
+
+11.7 Purchase returns (مرتجعات الشراء)
+  Screens: list (paginated, filters), form (pick a POSTED invoice -> returnable
+  lines with a quantity box each; or "بدون فاتورة" mode with a normal LinesTable),
+  details with Post / Cancel and a link to the invoice.
+  Endpoints: GET/POST /purchase-returns, GET/PATCH/DELETE /purchase-returns/:id,
+  POST /purchase-returns/:id/post, POST /purchase-returns/:id/cancel,
+  GET /purchase-invoices/:id/returnable.
+  Linked body: returnDate, purchaseInvoiceId, reason?, refundAmount?, notes?,
+  lines[{ purchaseInvoiceLineId, quantity, notes? }]
+  (supplierId / branchId / warehouseId optional: the invoice's are used).
+  Not-linked body: returnDate, supplierId, branchId, warehouseId, discountPercent?,
+  discountValue?, taxPercent?, reason?, refundAmount?, notes?,
+  lines[{ productId, itemUnitId, quantity, unitCost, notes? }]  (no line discounts on returns).
+  Done when: returning 2 brush cartons shows net 307.80 and code PR-2026-000001;
+  posting makes the card show PURCHASE_RETURN -24 (196 @ 10.6818); typing 11
+  cartons shows the QUANTITY_EXCEEDED message on that line; cancelling the return
+  brings the card back to 220.
+
+
+=====================================================================
+12. BREAKING CHANGES FROM WEEK 1 (short)
+=====================================================================
+  - PATCH /product-inventory/:id needs "reason" when quantity or costPrice changes (400 otherwise).
+  - SERVICE products can't be put in a warehouse; a product can't become SERVICE while in a warehouse.
+  - A product's primary unit can't change once it has stock movements or product units.
+  - An item unit used by a product unit can't be deleted.
+  - A currency used by purchase invoices can't be deleted.
+  - Errors inside document lines have "field": "lines.N.<field>".
+  - GET /products/:id has a new "units" array (additive).
+Full BEFORE / AFTER examples: doc/FRONTEND_WEEK2_READ_FIRST.txt (Part 2).

@@ -18,6 +18,8 @@ http://localhost:3000   (the backend runs on your machine with Docker, see READM
 Files in this folder
 --------------------
   00-overview.txt   this file: the flow, statuses, pagination, error codes, totals
+  week2flow.txt     the WHOLE Week 2 flow in one self-contained file (16 steps with exact
+                    requests / responses / errors, state machines, dropdowns, build order)
   numbering.txt     document numbers (PI-2026-000001) + Week 2 enum values (Arabic labels)
   currency.txt      /currency  (currencies + the default currency)
   product-units.txt /products/:productId/units, /product-units/:id  (carton = 12 pieces)
