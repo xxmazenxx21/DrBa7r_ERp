@@ -17,13 +17,76 @@ http://localhost:3000   (the backend runs on your machine with Docker, see READM
 
 Files in this folder
 --------------------
-  00-overview.txt   this file: pagination, new error codes, how totals are computed
+  00-overview.txt   this file: the flow, statuses, pagination, error codes, totals
   numbering.txt     document numbers (PI-2026-000001) + Week 2 enum values (Arabic labels)
   currency.txt      /currency  (currencies + the default currency)
   product-units.txt /products/:productId/units, /product-units/:id  (carton = 12 pieces)
   stock.txt         /stock-movements, /stock-movements/item-card  (item card) + what changed in /product-inventory
   purchase-quotations.txt  /purchase-quotations  (عروض أسعار الشراء: header + lines, statuses)
   purchase-invoices.txt    /purchase-invoices    (فواتير الشراء: post = stock in, cancel = stock out)
+  purchase-returns.txt     /purchase-returns     (مرتجعات الشراء: post = stock out, cancel = stock back)
+
+
+The Week 2 story (the flow)
+---------------------------
+A shop has 100 brushes in the Maadi warehouse at 10 each. Supplier "Nile"
+sends a quotation: a carton (12 brushes) at 150. We accept it, turn it into a
+purchase invoice for 10 cartons and post it. We find 2 broken cartons, so we
+make a purchase return and post it. The system knows by itself that the
+warehouse has 100 + 120 - 24 = 196 brushes at an average of 10.6818, and
+every movement is in the item card.
+
+  Purchase Quotation   --convert-->   Purchase Invoice   --return-->   Purchase Return
+  عرض سعر شراء                         فاتورة شراء                       مرتجع شراء
+  no effect                            POST: stock goes UP              POST: stock goes DOWN
+                                       CANCEL: stock goes DOWN          CANCEL: stock comes back
+
+  Setup before it: currency (EGP, default) -> product units (carton = 12)
+  -> opening stock (POST /product-inventory: an OPENING movement).
+
+The whole story runs as 16 requests: requests.http, section "WEEK 2 - THE BIG
+TEST" (W2-0 ... W2-16), on an empty database. Final stock: 218
+(100 + 120 - 24 + 24 - 2).
+
+The 4 rules of the week
+-----------------------
+  1. Stock is always counted in the PRIMARY unit (pieces), even when you buy
+     in cartons (quantity x factor).
+  2. Only the server's stock service changes stock: every change is a stock
+     movement (item card). You never send stock quantities to documents.
+  3. The server computes every total. You send quantities, prices and
+     percents only.
+  4. A POSTED document is never edited or deleted. It can only be cancelled
+     (an opposite movement), and it stays visible as CANCELLED.
+
+Statuses
+--------
+  Purchase quotation (QuotationStatus):
+      DRAFT مسودة --> SENT مُرسل --> ACCEPTED مقبول --> CONVERTED تم التحويل لفاتورة
+                                \-> REJECTED مرفوض
+      edit: DRAFT, SENT      delete: anything but CONVERTED      no stock effect
+
+  Purchase invoice / purchase return (DocumentStatus):
+      DRAFT مسودة --post--> POSTED مُرحّل --cancel--> CANCELLED ملغي
+      edit / delete: DRAFT only
+
+  A move that is not allowed -> 409 INVALID_STATUS.
+
+  Stock effect:
+      action                      movement type            stock
+      --------------------------  -----------------------  -------------------
+      POST /product-inventory     OPENING                  +  (opening balance)
+      PATCH / DELETE stock        ADJUSTMENT               +/- (needs reason)
+      post an invoice             PURCHASE                 +  (new average)
+      cancel an invoice           PURCHASE_CANCEL          -
+      post a return               PURCHASE_RETURN          -  (average unchanged)
+      cancel a return             PURCHASE_RETURN_CANCEL   +  (same cost back)
+
+  Blocks between documents:
+      - an invoice with a POSTED return can't be cancelled (cancel the return first)
+      - a return can't take more than bought - already returned (QUANTITY_EXCEEDED)
+      - an invoice / return whose goods are not in the warehouse can't be
+        cancelled / posted (INSUFFICIENT_STOCK)
 
 
 Pagination (every NEW Week 2 list)
@@ -67,12 +130,15 @@ Three new codes for documents and stock:
   -------------------  ------  --------------------------------------------  ---------------------------------------------
   INVALID_STATUS       409     the action is not allowed in the document's   لا يمكن تنفيذ العملية في حالة المستند الحالية
                                current status (e.g. posting an invoice that
-                               is already posted)
+                               is already posted). field "status"
   INSUFFICIENT_STOCK   400     not enough quantity in the warehouse          الكمية المتاحة في المخزن غير كافية
-                               (a return, or cancelling an invoice)
+                               (posting a return, cancelling an invoice).
+                               field "lines.N.quantity"
   QUANTITY_EXCEEDED    400     returning more than was bought                الكمية أكبر من المسموح بإرجاعه
+                               (minus what was already returned).
+                               field "lines.N.quantity"
 
-The modules that use them will show exact bodies.
+Exact bodies are in each module file.
 The full list of codes is in doc/week1/00-overview.txt (+ these three).
 
 

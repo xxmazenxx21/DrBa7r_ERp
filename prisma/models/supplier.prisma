@@ -9,6 +9,7 @@ model Supplier {
   openingBalance     Decimal             @default(0) @db.Decimal(18, 2)
   purchaseInvoices   PurchaseInvoice[]
   purchaseQuotations PurchaseQuotation[]
+  purchaseReturns    PurchaseReturn[]
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
   deletedAt          DateTime?

@@ -57,6 +57,7 @@ model PurchaseInvoice {
 
   lines                  PurchaseInvoiceLine[]
   convertedFromQuotation PurchaseQuotation? // the quotation this invoice came from (if any)
+  purchaseReturns        PurchaseReturn[] // returns of this invoice
 
   @@index([supplierId])
   @@index([branchId])
@@ -66,24 +67,25 @@ model PurchaseInvoice {
 // البنود. No deletedAt: a DRAFT's lines are replaced on edit; a POSTED
 // invoice can't be edited.
 model PurchaseInvoiceLine {
-  id                String          @id @default(cuid())
+  id                String               @id @default(cuid())
   purchaseInvoiceId String
-  purchaseInvoice   PurchaseInvoice @relation(fields: [purchaseInvoiceId], references: [id], onDelete: Cascade)
+  purchaseInvoice   PurchaseInvoice      @relation(fields: [purchaseInvoiceId], references: [id], onDelete: Cascade)
   productId         String // الصنف
-  product           Product         @relation(fields: [productId], references: [id])
+  product           Product              @relation(fields: [productId], references: [id])
   itemUnitId        String // الوحدة (the purchase unit, e.g. carton)
-  itemUnit          ItemUnit        @relation(fields: [itemUnitId], references: [id])
-  unitFactor        Decimal         @db.Decimal(18, 4) // معامل الوحدة (getUnitFactor, snapshot)
-  quantity          Decimal         @db.Decimal(18, 4) // الكمية in the purchase unit (10 cartons)
-  baseQuantity      Decimal         @db.Decimal(18, 4) // الكمية بالقطعة = quantity x unitFactor (120)
-  unitCost          Decimal         @db.Decimal(18, 4) // سعر شراء الوحدة (150 a carton)
-  discountPercent   Decimal?        @db.Decimal(5, 2) // نسبة خصم البند % (one of the two)
-  discountValue     Decimal?        @db.Decimal(18, 4) // قيمة خصم البند
-  lineTotal         Decimal         @db.Decimal(18, 4) // إجمالي البند (calcLine)
-  stockUnitCost     Decimal         @default(0) @db.Decimal(18, 4) // تكلفة القطعة في المخزن (set when posted; 11.25 in the example)
-  batchNumber       String?         @db.VarChar(50) // رقم التشغيلة
-  expiryDate        DateTime?       @db.Date // تاريخ الصلاحية (required if the product hasExpiryDate)
-  notes             String?         @db.VarChar(250) // ملاحظات
+  itemUnit          ItemUnit             @relation(fields: [itemUnitId], references: [id])
+  unitFactor        Decimal              @db.Decimal(18, 4) // معامل الوحدة (getUnitFactor, snapshot)
+  quantity          Decimal              @db.Decimal(18, 4) // الكمية in the purchase unit (10 cartons)
+  baseQuantity      Decimal              @db.Decimal(18, 4) // الكمية بالقطعة = quantity x unitFactor (120)
+  unitCost          Decimal              @db.Decimal(18, 4) // سعر شراء الوحدة (150 a carton)
+  discountPercent   Decimal?             @db.Decimal(5, 2) // نسبة خصم البند % (one of the two)
+  discountValue     Decimal?             @db.Decimal(18, 4) // قيمة خصم البند
+  lineTotal         Decimal              @db.Decimal(18, 4) // إجمالي البند (calcLine)
+  stockUnitCost     Decimal              @default(0) @db.Decimal(18, 4) // تكلفة القطعة في المخزن (set when posted; 11.25 in the example)
+  batchNumber       String?              @db.VarChar(50) // رقم التشغيلة
+  expiryDate        DateTime?            @db.Date // تاريخ الصلاحية (required if the product hasExpiryDate)
+  notes             String?              @db.VarChar(250) // ملاحظات
+  returnLines       PurchaseReturnLine[] // return lines that point to this line
 
   @@index([purchaseInvoiceId])
 }

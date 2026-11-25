@@ -1,0 +1,68 @@
+// مرتجعات الشراء: goods sent back to a supplier. Same shape as an invoice but
+// the other way round: POSTING takes the goods out of the warehouse,
+// CANCELLING puts them back. Reads the invoice tables, never writes them.
+
+// الرأس
+model PurchaseReturn {
+  id                String               @id @default(cuid())
+  code              String               @unique // رقم المرتجع: PR-2026-000001 (NumberingService)
+  returnDate        DateTime             @db.Date // تاريخ المرتجع
+  status            DocumentStatus       @default(DRAFT) // الحالة
+  reason            String?              @db.VarChar(250) // سبب الإرجاع: تالف، زيادة، غلط
+  supplierId        String // المورد (linked: = the invoice's supplier)
+  supplier          Supplier             @relation(fields: [supplierId], references: [id])
+  branchId          String // الفرع
+  branch            Branch               @relation(fields: [branchId], references: [id])
+  warehouseId       String // المخزن (linked and not sent: the invoice's warehouse)
+  warehouse         Inventory            @relation(fields: [warehouseId], references: [id])
+  purchaseInvoiceId String? // فاتورة الشراء الأصلية (optional, must be POSTED)
+  purchaseInvoice   PurchaseInvoice?     @relation(fields: [purchaseInvoiceId], references: [id])
+  subTotal          Decimal              @default(0) @db.Decimal(18, 2) // الإجمالي
+  discountPercent   Decimal              @default(0) @db.Decimal(5, 2) // نسبة الخصم % (linked: from the invoice)
+  discountValue     Decimal              @default(0) @db.Decimal(18, 2) // قيمة الخصم
+  taxPercent        Decimal              @default(0) @db.Decimal(5, 2) // نسبة الضريبة % (linked: from the invoice)
+  taxValue          Decimal              @default(0) @db.Decimal(18, 2) // قيمة الضريبة
+  netTotal          Decimal              @default(0) @db.Decimal(18, 2) // الصافي
+  refundAmount      Decimal              @default(0) @db.Decimal(18, 2) // المبلغ المسترد (cash back from the supplier, <= netTotal)
+  postedDate        DateTime? // تاريخ الترحيل
+  postedBy          String? // رحّله
+  postedByUser      User?                @relation("PostedReturns", fields: [postedBy], references: [id])
+  cancelledDate     DateTime? // تاريخ الإلغاء
+  cancelledBy       String? // ألغاه
+  cancelledByUser   User?                @relation("CancelledReturns", fields: [cancelledBy], references: [id])
+  notes             String?              @db.VarChar(500) // ملاحظات
+  createdBy         String
+  createdByUser     User                 @relation("CreatedReturns", fields: [createdBy], references: [id])
+  createdDate       DateTime             @default(now())
+  modifiedBy        String?
+  modifiedByUser    User?                @relation("ModifiedReturns", fields: [modifiedBy], references: [id])
+  modifiedDate      DateTime?            @updatedAt
+  deletedAt         DateTime?
+  lines             PurchaseReturnLine[]
+
+  @@index([supplierId])
+  @@index([purchaseInvoiceId])
+  @@index([returnDate])
+}
+
+// البنود (no deletedAt: a DRAFT's lines are replaced on edit)
+model PurchaseReturnLine {
+  id                    String               @id @default(cuid())
+  purchaseReturnId      String
+  purchaseReturn        PurchaseReturn       @relation(fields: [purchaseReturnId], references: [id], onDelete: Cascade)
+  purchaseInvoiceLineId String? // بند الفاتورة الأصلي (linked returns)
+  purchaseInvoiceLine   PurchaseInvoiceLine? @relation(fields: [purchaseInvoiceLineId], references: [id])
+  productId             String // الصنف (linked: from the invoice line)
+  product               Product              @relation(fields: [productId], references: [id])
+  itemUnitId            String // الوحدة (linked: from the invoice line)
+  itemUnit              ItemUnit             @relation(fields: [itemUnitId], references: [id])
+  unitFactor            Decimal              @db.Decimal(18, 4) // معامل الوحدة
+  quantity              Decimal              @db.Decimal(18, 4) // الكمية (> 0, in itemUnitId)
+  baseQuantity          Decimal              @db.Decimal(18, 4) // الكمية بالقطعة
+  unitCost              Decimal              @db.Decimal(18, 4) // سعر الوحدة (linked: invoice lineTotal / quantity)
+  lineTotal             Decimal              @db.Decimal(18, 4) // إجمالي البند
+  notes                 String?              @db.VarChar(250) // ملاحظات
+
+  @@index([purchaseReturnId])
+  @@index([purchaseInvoiceLineId])
+}

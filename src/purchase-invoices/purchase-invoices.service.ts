@@ -118,6 +118,17 @@ const detailInclude = {
   postedByUser: user,
   cancelledByUser: user,
   convertedFromQuotation: { select: { id: true, code: true } },
+  purchaseReturns: {
+    where: { deletedAt: null },
+    select: {
+      id: true,
+      code: true,
+      returnDate: true,
+      status: true,
+      netTotal: true,
+    },
+    orderBy: { createdDate: 'asc' },
+  },
   lines: {
     include: {
       product: {
@@ -487,7 +498,7 @@ export class PurchaseInvoicesService {
     );
   }
 
-  /** GET /purchase-invoices/:id: header + lines (+ returns, from Task 8). */
+  /** GET /purchase-invoices/:id: header + lines + its purchase returns. */
   async findOne(id: string) {
     await this.getActive(id);
     return ok(
@@ -733,7 +744,9 @@ export class PurchaseInvoicesService {
    *    StockService.stockOut (PURCHASE_CANCEL), same quantity. If some of the
    *    goods were already used -> 400 INSUFFICIENT_STOCK and NOTHING changes.
    * Nothing else changes (totals, lines, stockUnitCost stay as they were).
-   * (Task 8 adds: refused while a POSTED purchase return points to it.)
+   * Refused (400) while a POSTED purchase return points to the invoice:
+   * cancel the return first. (A return being posted locks the invoice row,
+   * so the two can't happen at the same moment.)
    */
   async cancel(id: string, userId: string) {
     await this.prisma.$transaction(async (tx) => {
@@ -749,6 +762,21 @@ export class PurchaseInvoicesService {
         const current = await this.getActive(id); // 404 if missing
         throw invalidStatus(
           `This invoice is ${current.status}: only a POSTED invoice can be cancelled`,
+        );
+      }
+
+      const postedReturns = await tx.purchaseReturn.count({
+        where: {
+          purchaseInvoiceId: id,
+          status: DocumentStatus.POSTED,
+          deletedAt: null,
+        },
+      });
+      if (postedReturns > 0) {
+        throw badRequest(
+          `This invoice has ${postedReturns} POSTED purchase return(s): cancel the return(s) first`,
+          ErrorCode.BAD_REQUEST,
+          'status',
         );
       }
 
@@ -792,12 +820,23 @@ export class PurchaseInvoicesService {
   /**
    * GET /purchase-invoices/:id/returnable: for every line, in the line's
    * unit: bought (quantity), already returned, still returnable.
-   * returned = sum of the POSTED purchase-return lines that point to the
-   * line; purchase returns arrive with Task 8, so it is 0 for now.
+   * returned = sum of the POSTED (not deleted) purchase-return lines that
+   * point to the line (DRAFT returns don't count yet).
    */
   async returnable(id: string) {
     await this.getActive(id);
     const invoice = await this.getDetail(id);
+    const rows = await this.prisma.purchaseReturnLine.groupBy({
+      by: ['purchaseInvoiceLineId'],
+      where: {
+        purchaseInvoiceLineId: { in: invoice.lines.map((l) => l.id) },
+        purchaseReturn: { status: DocumentStatus.POSTED, deletedAt: null },
+      },
+      _sum: { quantity: true },
+    });
+    const returned = new Map(
+      rows.map((r) => [r.purchaseInvoiceLineId, r._sum.quantity ?? ZERO]),
+    );
     return ok('Returnable quantities returned successfully', {
       invoiceId: invoice.id,
       code: invoice.code,
@@ -810,8 +849,8 @@ export class PurchaseInvoicesService {
         itemUnit: line.itemUnit,
         unitFactor: line.unitFactor,
         quantity: line.quantity,
-        returnedQuantity: ZERO,
-        remainingQuantity: line.quantity,
+        returnedQuantity: returned.get(line.id) ?? ZERO,
+        remainingQuantity: line.quantity.minus(returned.get(line.id) ?? ZERO),
       })),
     });
   }
