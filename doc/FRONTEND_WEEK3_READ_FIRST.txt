@@ -4,8 +4,9 @@ FRONTEND - READ THIS FIRST (Week 3 backend changes)
 >>> This file is updated with every Week 3 task. Check the "Last update" line
 >>> below after every pull.
 
-Last update: Week 3 Task 2 (sales quotations, without convert-to-invoice).
-New endpoints: PART 2. New enum values: PART 1. Nothing you use today changed.
+Last update: Week 3 Task 3 (sales invoices).
+New endpoints: PART 2 (sales quotations), PART 3 (sales invoices).
+New enum values: PART 1. Changed: DELETE /customer/:id and DELETE /currency/:id (PART 3).
 
 
 0. Get the new backend
@@ -97,3 +98,58 @@ Arabic labels (new keys)
                    lineTotal = إجمالي البند
   QuotationStatus: DRAFT = مسودة, SENT = مُرسل, ACCEPTED = مقبول,
                    REJECTED = مرفوض, CONVERTED = تم التحويل لفاتورة
+
+
+=====================================================================
+PART 3 - SALES INVOICES (فواتير البيع)  - doc/week3/sales-invoices.txt
+=====================================================================
+    POST   /sales-invoices                 new DRAFT invoice with its lines
+    GET    /sales-invoices                 list (PAGINATED; filters customerId,
+                                           branchId, warehouseId, status,
+                                           paymentType, dateFrom, dateTo,
+                                           search = code / customer name / notes)
+    GET    /sales-invoices/:id             header + lines + grossProfit
+    PATCH  /sales-invoices/:id             edit (DRAFT only; "lines" REPLACES all)
+    DELETE /sales-invoices/:id             soft delete (DRAFT only)
+    POST   /sales-invoices/:id/post        ترحيل: DRAFT -> POSTED, stock goes DOWN
+    POST   /sales-invoices/:id/cancel      إلغاء: POSTED -> CANCELLED, stock comes back
+    GET    /sales-invoices/:id/returnable  per line: sold / returned / remaining
+  The mirror of purchase invoices: same form (header + payment + currency +
+  lines table + totals box), same statuses and buttons. Differences:
+  customerId (العميل), lines use unitPrice (سعر البيع), no supplier invoice
+  number / batch / expiry date, and the stock goes the other way.
+  The client NEVER sends a cost: POST saves it from the warehouse average
+  (stockUnitCost, lineCost, totalCost); grossProfit is shown on GET :id
+  (null while DRAFT). Selling below cost is allowed (no warning); creditLimit
+  is not checked until Week 4.
+  Example: 5 cartons x 180, discount 5%, tax 14%, CREDIT -> SI-2026-000001,
+  net 974.70, remaining 974.70. POST -> item card SALE -60 at 10.6818
+  (Maadi 218 -> 158), totalCost 640.91, grossProfit 214.09. POST again -> 409.
+  20 cartons with only 158 brushes -> POST gives 400 INSUFFICIENT_STOCK
+  (field lines.0.quantity) and nothing changes. CANCEL -> SALE_CANCEL +60 at
+  10.6818 (the cost they left with) -> Maadi 218.
+  UI: show totalCost / grossProfit / line costs read only on POSTED invoices
+  (Week 5 will hide them from SALES / USER); hide paidAmount for CASH.
+
+Changed endpoints (BEFORE / AFTER)
+  DELETE /customer/:id
+    BEFORE: 200 for any active customer
+    AFTER:  400 while any (not deleted) sales invoice uses the customer
+      { "statusCode": 400, "message": "Customer is used by 3 sales invoice(s) and cannot be deleted", "error": "Bad Request", "code": "BAD_REQUEST", "field": null }
+      Arabic: لا يمكن حذف العميل لأن عليه فواتير بيع
+  DELETE /currency/:id
+    BEFORE: refused only when purchase invoices use it
+    AFTER:  also refused when sales invoices use it
+      { "statusCode": 400, "message": "Currency is used by 1 sales invoice(s) and cannot be deleted", "error": "Bad Request", "code": "BAD_REQUEST", "field": null }
+
+Arabic labels (new keys)
+  Sales invoice:  code = رقم الفاتورة, invoiceDate = تاريخ الفاتورة,
+                  dueDate = تاريخ الاستحقاق, paymentType = طريقة الدفع (CASH نقدي / CREDIT آجل),
+                  customerId = العميل, warehouseId = المخزن, currencyId = العملة,
+                  exchangeRate = سعر الصرف, paidAmount = المدفوع,
+                  remainingAmount = المتبقي على العميل, totalCost = تكلفة البضاعة المباعة,
+                  grossProfit = مجمل الربح, postedDate / postedBy = تاريخ الترحيل / رحّلها,
+                  cancelledDate / cancelledBy = تاريخ الإلغاء / ألغاها
+  Invoice line:   unitPrice = سعر البيع للوحدة, baseQuantity = الكمية بالقطعة,
+                  stockUnitCost = تكلفة القطعة, lineCost = تكلفة البند
+  DocumentStatus: DRAFT = مسودة, POSTED = مُرحّل, CANCELLED = ملغي

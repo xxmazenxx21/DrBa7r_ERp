@@ -12,5 +12,6 @@ model Inventory {
   stockMovements     StockMovement[]
   purchaseQuotations PurchaseQuotation[]
   salesQuotations    SalesQuotation[]
+  salesInvoices      SalesInvoice[]
   purchaseReturns    PurchaseReturn[]
 }

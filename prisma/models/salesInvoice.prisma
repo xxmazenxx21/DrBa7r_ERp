@@ -1,0 +1,83 @@
+// فواتير البيع: goods sold to a customer. POST = stock goes DOWN (stockOut at
+// the average) and the cost of every line is saved (stockUnitCost). CANCEL =
+// the goods come back at that SAME cost. The client never sends a cost.
+
+// الرأس
+model SalesInvoice {
+  id              String         @id @default(cuid())
+  code            String         @unique // رقم الفاتورة: SI-2026-000001 (NumberingService)
+  invoiceDate     DateTime       @db.Date // تاريخ الفاتورة
+  dueDate         DateTime?      @db.Date // تاريخ الاستحقاق (>= invoiceDate)
+  status          DocumentStatus @default(DRAFT) // الحالة: DRAFT / POSTED / CANCELLED
+  paymentType     PaymentType // طريقة الدفع: CASH / CREDIT
+  customerId      String // العميل
+  customer        Customer       @relation(fields: [customerId], references: [id])
+  branchId        String // الفرع
+  branch          Branch         @relation(fields: [branchId], references: [id])
+  warehouseId     String // المخزن (required, same branch): the goods leave from here
+  warehouse       Inventory      @relation(fields: [warehouseId], references: [id])
+  currencyId      String? // العملة (not sent -> the default currency)
+  currency        Currency?      @relation(fields: [currencyId], references: [id])
+  exchangeRate    Decimal        @default(1) @db.Decimal(18, 4) // سعر الصرف
+  subTotal        Decimal        @default(0) @db.Decimal(18, 2) // الإجمالي
+  discountPercent Decimal        @default(0) @db.Decimal(5, 2) // نسبة الخصم %
+  discountValue   Decimal        @default(0) @db.Decimal(18, 2) // قيمة الخصم
+  taxPercent      Decimal        @default(0) @db.Decimal(5, 2) // نسبة الضريبة %
+  taxValue        Decimal        @default(0) @db.Decimal(18, 2) // قيمة الضريبة
+  netTotal        Decimal        @default(0) @db.Decimal(18, 2) // الصافي
+  paidAmount      Decimal        @default(0) @db.Decimal(18, 2) // المدفوع: CASH = netTotal, CREDIT 0..netTotal
+  remainingAmount Decimal        @default(0) @db.Decimal(18, 2) // المتبقي على العميل = netTotal - paidAmount
+  totalCost       Decimal        @default(0) @db.Decimal(18, 2) // تكلفة البضاعة المباعة: SUM(lineCost), set on post
+
+  postedDate   DateTime? // تاريخ الترحيل
+  postedBy     String? // رحّلها
+  postedByUser User?     @relation("PostedSalesInvoices", fields: [postedBy], references: [id])
+
+  cancelledDate   DateTime? // تاريخ الإلغاء
+  cancelledBy     String? // ألغاها
+  cancelledByUser User?     @relation("CancelledSalesInvoices", fields: [cancelledBy], references: [id])
+
+  notes String? @db.VarChar(500) // ملاحظات
+
+  createdBy     String // أنشأها (from the token)
+  createdByUser User     @relation("CreatedSalesInvoices", fields: [createdBy], references: [id])
+  createdDate   DateTime @default(now()) // تاريخ الإنشاء
+
+  modifiedBy     String? // عدّلها
+  modifiedByUser User?     @relation("ModifiedSalesInvoices", fields: [modifiedBy], references: [id])
+  modifiedDate   DateTime? @updatedAt // تاريخ التعديل
+
+  deletedAt DateTime? // تاريخ المسح
+
+  lines                  SalesInvoiceLine[]
+  convertedFromQuotation SalesQuotation? // back-relation of SalesQuotation.convertedToInvoiceId
+  // salesReturns SalesReturn[] -> added in TASK 5
+
+  @@index([customerId])
+  @@index([branchId])
+  @@index([invoiceDate])
+}
+
+// البنود. No deletedAt: a DRAFT's lines are replaced on edit; a POSTED
+// invoice can't be edited.
+model SalesInvoiceLine {
+  id              String       @id @default(cuid())
+  salesInvoiceId  String
+  salesInvoice    SalesInvoice @relation(fields: [salesInvoiceId], references: [id], onDelete: Cascade)
+  productId       String // الصنف
+  product         Product      @relation(fields: [productId], references: [id])
+  itemUnitId      String // الوحدة
+  itemUnit        ItemUnit     @relation(fields: [itemUnitId], references: [id])
+  unitFactor      Decimal      @db.Decimal(18, 4) // معامل الوحدة (snapshot)
+  quantity        Decimal      @db.Decimal(18, 4) // الكمية بوحدة البند (5 cartons)
+  baseQuantity    Decimal      @db.Decimal(18, 4) // الكمية بالقطعة (60)
+  unitPrice       Decimal      @db.Decimal(18, 4) // سعر البيع للوحدة (180 a carton)
+  discountPercent Decimal?     @db.Decimal(5, 2) // نسبة خصم البند % (one of the two)
+  discountValue   Decimal?     @db.Decimal(18, 4) // قيمة خصم البند
+  lineTotal       Decimal      @db.Decimal(18, 4) // إجمالي البند (calcLine)
+  stockUnitCost   Decimal      @default(0) @db.Decimal(18, 4) // تكلفة القطعة: the average when posted (10.6818)
+  lineCost        Decimal      @default(0) @db.Decimal(18, 2) // تكلفة البند = -movement.totalCost (640.91)
+  notes           String?      @db.VarChar(250) // ملاحظات
+
+  @@index([salesInvoiceId])
+}

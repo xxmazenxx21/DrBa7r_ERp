@@ -755,3 +755,90 @@ Authorization: Bearer {{w2token}}
 ### List (paginated; filters customerId, branchId, status, dateFrom, dateTo, search)
 GET {{baseUrl}}/sales-quotations?status=ACCEPTED&page=1&pageSize=20
 Authorization: Bearer {{w2token}}
+
+### =====================================================================
+### WEEK 3 - SALES INVOICES (samples, not the big test)
+### =====================================================================
+# Uses "WEEK 2 - THE BIG TEST" (Maadi: 218 brushes @ 10.6818) and the customer
+# of "WEEK 3 - SALES QUOTATIONS" above. Run those first.
+
+### Sales invoice: 5 cartons x 180, discount 5%, tax 14%, CREDIT -> SI-2026-000001, netTotal 974.70 (DRAFT)
+# @name w3invoice
+POST {{baseUrl}}/sales-invoices
+Content-Type: application/json
+Authorization: Bearer {{w2token}}
+
+{
+  "invoiceDate": "2026-11-27",
+  "dueDate": "2026-12-27",
+  "paymentType": "CREDIT",
+  "customerId": "{{w3customer.response.body.$.data.id}}",
+  "branchId": "{{w2branch.response.body.$.data.id}}",
+  "warehouseId": "{{w2warehouse.response.body.$.data.id}}",
+  "discountPercent": 5,
+  "taxPercent": 14,
+  "lines": [
+    {
+      "productId": "{{w2brush.response.body.$.data.id}}",
+      "itemUnitId": "{{w2carton.response.body.$.data.id}}",
+      "quantity": 5,
+      "unitPrice": 180
+    }
+  ]
+}
+
+### Post (ترحيل): SALE -60 at 10.6818 -> Maadi 158; totalCost 640.91, grossProfit 214.09
+# @name w3invoicePost
+POST {{baseUrl}}/sales-invoices/{{w3invoice.response.body.$.data.id}}/post
+Authorization: Bearer {{w2token}}
+
+### Post again -> 409 INVALID_STATUS
+POST {{baseUrl}}/sales-invoices/{{w3invoice.response.body.$.data.id}}/post
+Authorization: Bearer {{w2token}}
+
+### What can still be returned, per line (returnedQuantity 0 until sales returns exist)
+GET {{baseUrl}}/sales-invoices/{{w3invoice.response.body.$.data.id}}/returnable
+Authorization: Bearer {{w2token}}
+
+### An invoice of 20 cartons (240 pieces, only 158 in Maadi)
+# @name w3bigInvoice
+POST {{baseUrl}}/sales-invoices
+Content-Type: application/json
+Authorization: Bearer {{w2token}}
+
+{
+  "invoiceDate": "2026-11-27",
+  "paymentType": "CASH",
+  "customerId": "{{w3customer.response.body.$.data.id}}",
+  "branchId": "{{w2branch.response.body.$.data.id}}",
+  "warehouseId": "{{w2warehouse.response.body.$.data.id}}",
+  "lines": [
+    {
+      "productId": "{{w2brush.response.body.$.data.id}}",
+      "itemUnitId": "{{w2carton.response.body.$.data.id}}",
+      "quantity": 20,
+      "unitPrice": 180
+    }
+  ]
+}
+
+### Post it -> 400 INSUFFICIENT_STOCK, field lines.0.quantity ("available 158, requested 240"); nothing changes
+POST {{baseUrl}}/sales-invoices/{{w3bigInvoice.response.body.$.data.id}}/post
+Authorization: Bearer {{w2token}}
+
+### One invoice (lines + grossProfit)
+GET {{baseUrl}}/sales-invoices/{{w3invoice.response.body.$.data.id}}
+Authorization: Bearer {{w2token}}
+
+### List (paginated; filters customerId, branchId, warehouseId, status, paymentType, dateFrom, dateTo, search)
+GET {{baseUrl}}/sales-invoices?status=POSTED&page=1&pageSize=20
+Authorization: Bearer {{w2token}}
+
+### Cancel (إلغاء): SALE_CANCEL +60 at 10.6818 (the cost it left with) -> Maadi back to 218
+# @name w3invoiceCancel
+POST {{baseUrl}}/sales-invoices/{{w3invoice.response.body.$.data.id}}/cancel
+Authorization: Bearer {{w2token}}
+
+### Item card of the brush in Maadi: ... SALE -60, SALE_CANCEL +60 -> 218 @ 10.6818
+GET {{baseUrl}}/stock-movements/item-card?productId={{w2brush.response.body.$.data.id}}&warehouseId={{w2warehouse.response.body.$.data.id}}
+Authorization: Bearer {{w2token}}

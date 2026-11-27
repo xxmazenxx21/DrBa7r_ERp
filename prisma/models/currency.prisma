@@ -5,6 +5,7 @@ model Currency {
   symbol           String? // الرمز: ج.م / $ (optional)
   isDefault        Boolean           @default(false) // العملة الأساسية: only ONE active currency is true
   purchaseInvoices PurchaseInvoice[]
+  salesInvoices    SalesInvoice[]
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
   deletedAt        DateTime?

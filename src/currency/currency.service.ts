@@ -145,13 +145,21 @@ export class CurrencyService {
         );
       }
       // Like categories used by products: a currency used by any (not
-      // deleted) purchase invoice can't be deleted.
+      // deleted) purchase or sales invoice can't be deleted.
       const invoices = await tx.purchaseInvoice.count({
         where: { currencyId: id, deletedAt: null },
       });
       if (invoices > 0) {
         throw new BadRequestException(
           `Currency is used by ${invoices} purchase invoice(s) and cannot be deleted`,
+        );
+      }
+      const salesInvoices = await tx.salesInvoice.count({
+        where: { currencyId: id, deletedAt: null },
+      });
+      if (salesInvoices > 0) {
+        throw new BadRequestException(
+          `Currency is used by ${salesInvoices} sales invoice(s) and cannot be deleted`,
         );
       }
       await tx.currency.update({

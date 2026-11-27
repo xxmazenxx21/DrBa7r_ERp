@@ -12,4 +12,5 @@ model Customer {
   updatedAt        DateTime         @updatedAt
   deletedAt        DateTime?
   salesQuotations  SalesQuotation[]
+  salesInvoices    SalesInvoice[]
 }

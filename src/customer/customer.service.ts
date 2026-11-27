@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -65,6 +69,16 @@ export class CustomerService {
 
   async remove(id: string) {
     await this.getActive(id, 'customer not found');
+    // Like a currency used by invoices: a customer with any (not deleted)
+    // sales invoice can't be deleted.
+    const invoices = await this.prisma.salesInvoice.count({
+      where: { customerId: id, deletedAt: null },
+    });
+    if (invoices > 0) {
+      throw new BadRequestException(
+        `Customer is used by ${invoices} sales invoice(s) and cannot be deleted`,
+      );
+    }
     await this.prisma.customer.update({
       where: { id },
       data: { deletedAt: new Date() },

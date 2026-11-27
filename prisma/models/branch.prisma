@@ -9,6 +9,7 @@ model Branch {
   purchaseInvoices   PurchaseInvoice[]
   purchaseQuotations PurchaseQuotation[]
   salesQuotations    SalesQuotation[]
+  salesInvoices      SalesInvoice[]
   purchaseReturns    PurchaseReturn[]
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
