@@ -83,8 +83,11 @@ Modules (task number = the order they are built in)
   7     stock-counts  الجرد              open a count + enter counts + post              stock_counts
   8     docs + the big test            week3flow.txt + requests.http W3-0 ... W3-22    -
 
-  Done so far: Task 1, Task 2 (sales quotations, without convert-to-invoice),
-  Task 3 (sales invoices: post = stock out with cost, cancel = stock back at the same cost).
+  Done so far: Task 1, Task 2 (sales quotations), Task 3 (sales invoices:
+  post = stock out with cost, cancel = stock back at the same cost), Task 4
+  (POST /sales-quotations/:id/convert-to-invoice: an ACCEPTED quotation ->
+  CONVERTED + a DRAFT sales invoice; links quotation.convertedToInvoiceId and
+  invoice.convertedFromQuotation { id, code }).
   New document numbers (one counter per type per year):
     SQ-2026-000001 (sales quotation), SI- (sales invoice), SR- (sales return),
     ST- (stock transfer), SC- (stock count).
@@ -93,6 +96,6 @@ Modules (task number = the order they are built in)
 Files in this folder
 --------------------
   00-overview.txt        this file
-  sales-quotations.txt   /sales-quotations  (عروض أسعار البيع: header + lines, statuses)
+  sales-quotations.txt   /sales-quotations  (عروض أسعار البيع: header + lines, statuses, convert-to-invoice)
   sales-invoices.txt     /sales-invoices    (فواتير البيع: post = stock out + cost, cancel = stock back)
   (one file per module is added with each task)

@@ -40,7 +40,34 @@ const ZERO = new Prisma.Decimal(0);
 const m2 = (v: Prisma.Decimal) =>
   v.toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
 
-/** A line as the service needs it (from the API, later from a quotation). */
+/** What convert-to-invoice sends (ConvertToInvoiceDto of sales-quotations). */
+export interface FromQuotationInput {
+  paymentType: PaymentType;
+  warehouseId?: string;
+  invoiceDate: string;
+}
+
+/** The sales quotation (with its lines) that becomes an invoice. */
+export interface QuotationForInvoice {
+  customerId: string;
+  branchId: string;
+  warehouseId: string | null;
+  discountPercent: Prisma.Decimal;
+  discountValue: Prisma.Decimal;
+  taxPercent: Prisma.Decimal;
+  notes: string | null;
+  lines: {
+    productId: string;
+    itemUnitId: string;
+    quantity: Prisma.Decimal;
+    unitPrice: Prisma.Decimal;
+    discountPercent: Prisma.Decimal | null;
+    discountValue: Prisma.Decimal | null;
+    notes: string | null;
+  }[];
+}
+
+/** A line as the service needs it (from the API or from a quotation). */
 interface SalesInvoiceLineInput {
   productId: string;
   itemUnitId: string;
@@ -51,7 +78,7 @@ interface SalesInvoiceLineInput {
   notes?: string | null;
 }
 
-/** A whole invoice as the service needs it (from the API, later from a quotation). */
+/** A whole invoice as the service needs it (from the API or from a quotation). */
 interface SalesInvoiceInput {
   invoiceDate: Date;
   dueDate: Date | null;
@@ -222,7 +249,7 @@ export class SalesInvoicesService {
 
   /**
    * Checks a whole new invoice and computes everything to save (used by
-   * create; createFromQuotation will use it in Task 4).
+   * create and createFromQuotation).
    */
   private async build(input: SalesInvoiceInput) {
     await assertExists(this.prisma.customer, 'customerId', input.customerId);
@@ -271,7 +298,7 @@ export class SalesInvoicesService {
   /**
    * Saves a built invoice inside `tx`: takes the next SI number (same
    * transaction, so a failed save doesn't use a number) and creates the
-   * header with its lines.
+   * header with its lines. Shared by create and createFromQuotation.
    */
   private async insertInvoice(
     tx: Tx,
@@ -314,6 +341,55 @@ export class SalesInvoicesService {
       this.insertInvoice(tx, built, userId),
     );
     return ok('Sales invoice created successfully', await this.getDetail(id));
+  }
+
+  /**
+   * Used ONLY by convert-to-invoice (no API here): like create, but the data
+   * comes from an ACCEPTED sales quotation (customer, branch, lines,
+   * discounts, tax, notes). Runs in the CALLER's transaction, so the new
+   * invoice and the quotation's CONVERTED status are saved together.
+   * Currency = the default one (rate 1). dueDate = none (edit the DRAFT).
+   * The warehouse: dto.warehouseId if sent, else the quotation's; none at
+   * all -> 400 VALIDATION_FAILED field warehouseId. build() re-checks
+   * everything (customer, branch, warehouse in the branch, products that
+   * were deleted since the quotation -> lines.N.productId).
+   */
+  async createFromQuotation(
+    tx: Tx,
+    quotation: QuotationForInvoice,
+    dto: FromQuotationInput,
+    userId: string,
+  ) {
+    const warehouseId = dto.warehouseId ?? quotation.warehouseId;
+    if (!warehouseId) {
+      throw badRequest(
+        ['warehouseId is required: the quotation has no warehouse'],
+        ErrorCode.VALIDATION_FAILED,
+        'warehouseId',
+      );
+    }
+    const built = await this.build({
+      invoiceDate: toDate(dto.invoiceDate),
+      dueDate: null,
+      paymentType: dto.paymentType,
+      customerId: quotation.customerId,
+      branchId: quotation.branchId,
+      warehouseId,
+      discountPercent: quotation.discountPercent,
+      discountValue: quotation.discountValue,
+      taxPercent: quotation.taxPercent,
+      notes: quotation.notes,
+      lines: quotation.lines.map((l) => ({
+        productId: l.productId,
+        itemUnitId: l.itemUnitId,
+        quantity: l.quantity,
+        unitPrice: l.unitPrice,
+        discountPercent: l.discountPercent,
+        discountValue: l.discountValue,
+        notes: l.notes,
+      })),
+    });
+    return this.insertInvoice(tx, built, userId);
   }
 
   /** GET /sales-invoices: filters + search, newest first, paginated. */

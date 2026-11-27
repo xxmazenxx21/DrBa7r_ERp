@@ -10,7 +10,7 @@ import { StockModule } from '../stock/stock.module';
   imports: [PrismaModule, NumberingModule, ProductUnitsModule, StockModule],
   controllers: [SalesInvoicesController],
   providers: [SalesInvoicesService],
-  // sales-quotations (convert-to-invoice, Task 4) will use createFromQuotation().
+  // sales-quotations (convert-to-invoice) uses createFromQuotation().
   exports: [SalesInvoicesService],
 })
 export class SalesInvoicesModule {}

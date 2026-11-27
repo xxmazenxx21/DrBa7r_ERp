@@ -34,6 +34,21 @@ currency + exchange rate, Post and Cancel. Two differences:
   - CANCELLED: the goods came back. The invoice stays (read only).
   Any other action -> 409 INVALID_STATUS.
 
+  Two ways to make a sales invoice (both give a normal DRAFT, SI-... number):
+  - POST /sales-invoices (below), or
+  - POST /sales-quotations/:id/convert-to-invoice from an ACCEPTED quotation
+    (doc/week3/sales-quotations.txt, API 7). Body { paymentType, invoiceDate,
+    warehouseId? }. The invoice copies the quotation's customer, branch,
+    warehouse (unless you send one), lines, discounts, tax and notes, in the
+    default currency (rate 1), no dueDate. The links between them:
+        quotation.convertedToInvoiceId = invoice.id        (GET /sales-quotations/:id)
+        invoice.convertedFromQuotation = { id, code }      (GET /sales-invoices/:id)
+    A direct invoice has "convertedFromQuotation": null. The converted invoice
+    is edited, posted, cancelled and (while DRAFT) deleted like any other one.
+    The quotation stays CONVERTED whatever happens to the invoice (same as
+    purchases); if the DRAFT invoice was deleted, GET /sales-invoices/<its id>
+    gives 404.
+
 The brush example (Week 3 story)
 --------------------------------
   Before: the Maadi warehouse has 218 brushes at an average of 10.6818.
@@ -99,7 +114,8 @@ Header fields (Arabic label = what the screen shows)
   cancelledDate / cancelledBy  تاريخ الإلغاء / ألغاها   server
   notes            ملاحظات                  user, optional    max 500; null clears
   createdBy / createdDate / modifiedBy / modifiedDate        server
-  convertedFromQuotation       العرض الأصلي             server  { id, code } when it came from a sales quotation (Task 4)
+  convertedFromQuotation       العرض الأصلي             server  { id, code } when it came from a sales quotation
+                                                                (POST /sales-quotations/:id/convert-to-invoice), else null
 
 Line fields (البنود)
 -------------------
@@ -160,7 +176,7 @@ Invoice object (create / update / get one / post / cancel) - real POSTED example
   "modifiedByUser": null,
   "postedByUser": { "id": "fc8a036d-b6df-415a-996b-b0e5aca1b8fe", "username": "admin" },
   "cancelledByUser": null,
-  "convertedFromQuotation": null,
+  "convertedFromQuotation": null,          <-- { "id", "code": "SQ-2026-000001" } when it came from a quotation
   "lines": [
     {
       "id": "cmwym3r9y000y2fs8inib6md8",
