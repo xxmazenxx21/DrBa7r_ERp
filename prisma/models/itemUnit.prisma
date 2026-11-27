@@ -9,6 +9,7 @@ model ItemUnit {
   purchaseReturnLines    PurchaseReturnLine[]
   salesQuotationLines    SalesQuotationLine[]
   salesInvoiceLines      SalesInvoiceLine[]
+  salesReturnLines       SalesReturnLine[]
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @default(now()) @updatedAt
   deletedAt              DateTime?

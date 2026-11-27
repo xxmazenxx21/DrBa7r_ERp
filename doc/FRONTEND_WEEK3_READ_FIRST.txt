@@ -4,11 +4,11 @@ FRONTEND - READ THIS FIRST (Week 3 backend changes)
 >>> This file is updated with every Week 3 task. Check the "Last update" line
 >>> below after every pull.
 
-Last update: fix between Task 4 and Task 5 (deleting a converted DRAFT
-invoice frees its quotation, purchase AND sales: PART 0, entry 0.3).
+Last update: Week 3 Task 5 (sales returns: PART 5; sales invoice cancel /
+returnable / salesReturns: end of PART 3).
 Changes to screens you already built (Week 1 / Week 2): PART 0 - check it first.
 New endpoints: PART 2 (sales quotations), PART 3 (sales invoices),
-PART 4 (POST /sales-quotations/:id/convert-to-invoice).
+PART 4 (POST /sales-quotations/:id/convert-to-invoice), PART 5 (sales returns).
 New enum values: PART 1.
 
 
@@ -180,6 +180,20 @@ PART 3 - SALES INVOICES (فواتير البيع)  - doc/week3/sales-invoices.tx
 Changed old endpoints: DELETE /customer/:id and DELETE /currency/:id are now
 refused while sales invoices use them - see PART 0 (0.1, 0.2).
 
+Since Task 5 (sales returns, PART 5), on the sales invoice screen:
+  - GET /sales-invoices/:id has "salesReturns": [{ id, code, returnDate,
+    status, netTotal }] (not deleted, any status; [] when none). Show them as
+    links (المرتجعات).
+  - GET /sales-invoices/:id/returnable: returnedQuantity now counts the
+    POSTED sales returns (it was always "0" before).
+  - POST /sales-invoices/:id/cancel:
+    BEFORE: 201 for any POSTED invoice.
+    AFTER:  400 while a POSTED sales return points to the invoice:
+      { "statusCode": 400, "message": "This invoice has 1 POSTED sales return(s): cancel the return(s) first", "error": "Bad Request", "code": "BAD_REQUEST", "field": "status" }
+      Arabic: لا يمكن إلغاء الفاتورة لأن عليها مرتجع مُرحّل، ألغِ المرتجع أولًا
+    Tip: hide / disable Cancel when salesReturns has a POSTED one.
+  - New button on a POSTED invoice: "عمل مرتجع" (make a return) -> PART 5.
+
 Arabic labels (new keys)
   Sales invoice:  code = رقم الفاتورة, invoiceDate = تاريخ الفاتورة,
                   dueDate = تاريخ الاستحقاق, paymentType = طريقة الدفع (CASH نقدي / CREDIT آجل),
@@ -237,3 +251,89 @@ PART 4 - CONVERT A SALES QUOTATION TO AN INVOICE (تحويل العرض لفات
        make a new quotation without that product, or a direct sales invoice)
   Nothing is saved when a convert fails: the quotation stays ACCEPTED and no
   SI number is used.
+
+
+=====================================================================
+PART 5 - SALES RETURNS (مرتجعات البيع)  - doc/week3/sales-returns.txt
+=====================================================================
+    POST   /sales-returns             new DRAFT return (linked to a POSTED sales invoice)
+    GET    /sales-returns             list (PAGINATED; filters customerId,
+                                      salesInvoiceId, status, dateFrom, dateTo)
+    GET    /sales-returns/:id         header + lines + the invoice { id, code, invoiceDate, status }
+    PATCH  /sales-returns/:id         edit (DRAFT only; "lines" REPLACES all lines)
+    DELETE /sales-returns/:id         soft delete (DRAFT only)
+    POST   /sales-returns/:id/post    ترحيل: DRAFT -> POSTED, the goods COME BACK (stock UP)
+    POST   /sales-returns/:id/cancel  إلغاء: POSTED -> CANCELLED, the goods go out again
+  The mirror of a LINKED purchase return (doc/week2/purchase-returns.txt).
+  A sales return is ALWAYS linked to a POSTED sales invoice: no return
+  without an invoice.
+
+  The form (start it from a POSTED invoice, button "عمل مرتجع"):
+    1. salesInvoiceId = the invoice (required).
+    2. Load GET /sales-invoices/:id/returnable and show one row per invoice
+       line with remainingQuantity; the user types the quantity to return
+       (<= remainingQuantity, in the line's unit).
+    3. Send only: returnDate, salesInvoiceId, lines [{ salesInvoiceLineId,
+       quantity }], and optionally reason (سبب الإرجاع), refundAmount
+       (المبلغ المردود للعميل, 0..netTotal), notes.
+  Everything else comes from the invoice: customer, branch, warehouse (the
+  goods come back there), product, unit, price (= invoice lineTotal /
+  quantity), the discount share and the tax. Sending discount / tax / totals /
+  costs -> 400 "should not exist". productId / itemUnitId / unitPrice in a
+  line are ignored.
+
+  The cost: the goods come back at the SAME cost they left with (the invoice
+  line's stockUnitCost), not today's average. POST saves lineCost and the
+  header totalCost (تكلفة البضاعة الراجعة). Show them read only (Week 5 will
+  hide costs from SALES / USER).
+
+  Example (the brush): SI-2026-000001 POSTED (5 cartons x 180, discount 5%,
+  tax 14%). Return 1 carton -> SR-2026-000001: subTotal 180, discountValue 9,
+  taxValue 23.94, netTotal 194.94. Return 6 cartons -> 400 QUANTITY_EXCEEDED.
+  POST -> item card SALE_RETURN +12 at 10.6818 (Maadi 158 -> 170), totalCost
+  128.18. Cancelling the invoice now -> 400 (cancel the return first).
+  CANCEL the return -> SALE_RETURN_CANCEL -12 (Maadi 158).
+
+  Errors (code + field -> suggested Arabic):
+    400 QUANTITY_EXCEEDED, field "lines.N.quantity"
+      { "statusCode": 400, "message": "Only 5 can still be returned on this invoice line (sold 5, already returned 0)", "error": "Bad Request", "code": "QUANTITY_EXCEEDED", "field": "lines.0.quantity" }
+      Arabic: الكمية المرتجعة أكبر من المتبقي من الفاتورة (المتبقي X)
+      (also on POST, if another return of the same line was posted meanwhile)
+    400 BAD_REQUEST, field "salesInvoiceId": the invoice is not POSTED (DRAFT / CANCELLED)
+      { "statusCode": 400, "message": "salesInvoiceId must be a POSTED invoice (this one is DRAFT)", "error": "Bad Request", "code": "BAD_REQUEST", "field": "salesInvoiceId" }
+      Arabic: يجب اختيار فاتورة بيع مُرحّلة
+    400 DOES_NOT_EXIST, field "salesInvoiceId": missing / deleted invoice
+      Arabic: فاتورة البيع غير موجودة أو محذوفة
+    400 BAD_REQUEST, field "lines.N.salesInvoiceLineId": a line of another invoice
+      Arabic: هذا البند ليس من بنود الفاتورة المختارة
+    400 BAD_REQUEST, field "customerId" / "branchId" / "warehouseId": sent and different from the invoice
+      Arabic: العميل والفرع والمخزن يجب أن يكونوا نفس بيانات الفاتورة
+    400 BAD_REQUEST, field "refundAmount": more than netTotal
+      Arabic: المبلغ المردود أكبر من صافي المرتجع
+    400 INSUFFICIENT_STOCK, field "lines.N.quantity" on CANCEL: the returned goods were sold again
+      Arabic: لا يمكن إلغاء المرتجع: البضاعة غير موجودة في المخزن
+    409 INVALID_STATUS, field "status": edit / delete / post / cancel in the wrong status
+      Arabic: لا يمكن تنفيذ العملية في حالة المستند الحالية
+
+  Buttons by status:
+    DRAFT مسودة      حفظ، حذف، ترحيل         (PATCH, DELETE, POST /post)
+    POSTED مُرحّل     إلغاء                    (POST /cancel)
+    CANCELLED ملغي   -                        read only
+
+Arabic labels (new keys)
+  Sales return:   code = رقم المرتجع, returnDate = تاريخ المرتجع, status = الحالة,
+                  reason = سبب الإرجاع, salesInvoiceId = فاتورة البيع الأصلية,
+                  customerId = العميل, branchId = الفرع, warehouseId = المخزن,
+                  subTotal = الإجمالي, discountPercent = نسبة الخصم %,
+                  discountValue = قيمة الخصم, taxPercent = نسبة الضريبة %,
+                  taxValue = قيمة الضريبة, netTotal = الصافي,
+                  refundAmount = المبلغ المردود للعميل,
+                  totalCost = تكلفة البضاعة الراجعة,
+                  postedDate / postedBy = تاريخ الترحيل / رحّله,
+                  cancelledDate / cancelledBy = تاريخ الإلغاء / ألغاه
+  Return line:    salesInvoiceLineId = بند الفاتورة الأصلي, productId = الصنف,
+                  itemUnitId = الوحدة, unitFactor = معامل الوحدة, quantity = الكمية,
+                  baseQuantity = الكمية بالقطعة, unitPrice = سعر الوحدة,
+                  lineTotal = إجمالي البند, stockUnitCost = تكلفة القطعة,
+                  lineCost = تكلفة البند
+  Item card types: SALE_RETURN = مرتجع بيع (+), SALE_RETURN_CANCEL = إلغاء مرتجع بيع (-)

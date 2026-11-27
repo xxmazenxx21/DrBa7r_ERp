@@ -860,7 +860,7 @@ Authorization: Bearer {{w2token}}
 POST {{baseUrl}}/sales-invoices/{{w3invoice.response.body.$.data.id}}/post
 Authorization: Bearer {{w2token}}
 
-### What can still be returned, per line (returnedQuantity 0 until sales returns exist)
+### What can still be returned, per line (returnedQuantity = POSTED sales returns; see "WEEK 3 - SALES RETURNS")
 GET {{baseUrl}}/sales-invoices/{{w3invoice.response.body.$.data.id}}/returnable
 Authorization: Bearer {{w2token}}
 
@@ -904,5 +904,97 @@ POST {{baseUrl}}/sales-invoices/{{w3invoice.response.body.$.data.id}}/cancel
 Authorization: Bearer {{w2token}}
 
 ### Item card of the brush in Maadi: ... SALE -60, SALE_CANCEL +60 -> 218 @ 10.6818
+GET {{baseUrl}}/stock-movements/item-card?productId={{w2brush.response.body.$.data.id}}&warehouseId={{w2warehouse.response.body.$.data.id}}
+Authorization: Bearer {{w2token}}
+
+### =====================================================================
+### WEEK 3 - SALES RETURNS (samples, not the big test)
+### =====================================================================
+# Uses "WEEK 2 - THE BIG TEST" and the two Week 3 sections above (run them
+# first, in order): the converted invoice SI-2026-000001 (5 cartons x 180,
+# discount 5%, tax 14%, still DRAFT) and Maadi at 218 brushes @ 10.6818.
+# A sales return is ALWAYS linked to a POSTED sales invoice; the goods come
+# back at the cost they LEFT with (the invoice line's stockUnitCost).
+
+### Post SI-2026-000001: SALE -60 at 10.6818 -> Maadi 158
+# @name w3srInvoicePost
+POST {{baseUrl}}/sales-invoices/{{w3convert.response.body.$.data.invoice.id}}/post
+Authorization: Bearer {{w2token}}
+
+### Return 1 carton -> SR-2026-000001 DRAFT: subTotal 180, discountValue 9, taxValue 23.94, netTotal 194.94
+# Customer / branch / warehouse, unit, price, discount share and tax come from
+# the invoice; stockUnitCost 10.6818 from the invoice line.
+# @name w3return
+POST {{baseUrl}}/sales-returns
+Content-Type: application/json
+Authorization: Bearer {{w2token}}
+
+{
+  "returnDate": "2026-11-28",
+  "reason": "تالف",
+  "salesInvoiceId": "{{w3convert.response.body.$.data.invoice.id}}",
+  "lines": [
+    {
+      "salesInvoiceLineId": "{{w3srInvoicePost.response.body.$.data.lines[0].id}}",
+      "quantity": 1
+    }
+  ]
+}
+
+### Return 6 cartons -> 400 QUANTITY_EXCEEDED, field lines.0.quantity ("Only 5 can still be returned ...")
+POST {{baseUrl}}/sales-returns
+Content-Type: application/json
+Authorization: Bearer {{w2token}}
+
+{
+  "returnDate": "2026-11-28",
+  "salesInvoiceId": "{{w3convert.response.body.$.data.invoice.id}}",
+  "lines": [
+    {
+      "salesInvoiceLineId": "{{w3srInvoicePost.response.body.$.data.lines[0].id}}",
+      "quantity": 6
+    }
+  ]
+}
+
+### Post the return (ترحيل): SALE_RETURN +12 at 10.6818 -> Maadi 170; lineCost = totalCost 128.18
+# @name w3returnPost
+POST {{baseUrl}}/sales-returns/{{w3return.response.body.$.data.id}}/post
+Authorization: Bearer {{w2token}}
+
+### Post again -> 409 INVALID_STATUS
+POST {{baseUrl}}/sales-returns/{{w3return.response.body.$.data.id}}/post
+Authorization: Bearer {{w2token}}
+
+### Returnable on the invoice: quantity 5, returnedQuantity 1, remainingQuantity 4
+GET {{baseUrl}}/sales-invoices/{{w3convert.response.body.$.data.invoice.id}}/returnable
+Authorization: Bearer {{w2token}}
+
+### The invoice lists its returns: salesReturns [{ code: "SR-2026-000001", status: "POSTED", netTotal: "194.94" }]
+GET {{baseUrl}}/sales-invoices/{{w3convert.response.body.$.data.invoice.id}}
+Authorization: Bearer {{w2token}}
+
+### Cancel the invoice -> 400 BAD_REQUEST, field status (it has a POSTED return)
+POST {{baseUrl}}/sales-invoices/{{w3convert.response.body.$.data.invoice.id}}/cancel
+Authorization: Bearer {{w2token}}
+
+### One sales return (lines + the invoice)
+GET {{baseUrl}}/sales-returns/{{w3return.response.body.$.data.id}}
+Authorization: Bearer {{w2token}}
+
+### List (paginated; filters customerId, salesInvoiceId, status, dateFrom, dateTo)
+GET {{baseUrl}}/sales-returns?status=POSTED&page=1&pageSize=20
+Authorization: Bearer {{w2token}}
+
+### Cancel the return (إلغاء): SALE_RETURN_CANCEL -12 -> Maadi 158
+# @name w3returnCancel
+POST {{baseUrl}}/sales-returns/{{w3return.response.body.$.data.id}}/cancel
+Authorization: Bearer {{w2token}}
+
+### Now the invoice can be cancelled: SALE_CANCEL +60 at 10.6818 -> Maadi back to 218
+POST {{baseUrl}}/sales-invoices/{{w3convert.response.body.$.data.invoice.id}}/cancel
+Authorization: Bearer {{w2token}}
+
+### Item card of the brush in Maadi: ... SALE -60, SALE_RETURN +12, SALE_RETURN_CANCEL -12, SALE_CANCEL +60 -> 218 @ 10.6818
 GET {{baseUrl}}/stock-movements/item-card?productId={{w2brush.response.body.$.data.id}}&warehouseId={{w2warehouse.response.body.$.data.id}}
 Authorization: Bearer {{w2token}}

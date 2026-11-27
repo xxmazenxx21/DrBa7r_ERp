@@ -116,7 +116,17 @@ const detailInclude = {
   postedByUser: user,
   cancelledByUser: user,
   convertedFromQuotation: { select: { id: true, code: true } },
-  // TODO(TASK 5): salesReturns (id, code, returnDate, status, netTotal)
+  salesReturns: {
+    where: { deletedAt: null },
+    select: {
+      id: true,
+      code: true,
+      returnDate: true,
+      status: true,
+      netTotal: true,
+    },
+    orderBy: { createdDate: 'asc' },
+  },
   lines: {
     include: {
       product: { select: { id: true, code: true, name: true, itemType: true } },
@@ -429,7 +439,7 @@ export class SalesInvoicesService {
     );
   }
 
-  /** GET /sales-invoices/:id: header + lines + grossProfit (+ returns, Task 5). */
+  /** GET /sales-invoices/:id: header + lines + grossProfit + salesReturns. */
   async findOne(id: string) {
     await this.getActive(id);
     return ok('Sales invoice returned successfully', await this.getDetail(id));
@@ -668,6 +678,8 @@ export class SalesInvoicesService {
    *    StockService.stockIn (SALE_CANCEL), same quantity, at the movement's
    *    unitCost = the SAME cost the goods left with (not today's average).
    * Nothing else changes (totals, totalCost, line costs stay as they were).
+   * Refused (400, field status) while a POSTED sales return points to the
+   * invoice: cancel the return first.
    */
   async cancel(id: string, userId: string) {
     await this.prisma.$transaction(async (tx) => {
@@ -686,12 +698,23 @@ export class SalesInvoicesService {
         );
       }
 
-      // TODO(TASK 5): refuse the cancel while a POSTED sales return points to
-      // this invoice, exactly like purchase invoices:
-      //   count SalesReturn where { salesInvoiceId: id, status: POSTED, deletedAt: null }
-      //   > 0 -> 400 BAD_REQUEST, field "status",
-      //   "This invoice has N POSTED sales return(s): cancel the return(s) first"
-      // (the SalesReturn table doesn't exist yet).
+      // Refused while a POSTED sales return points to this invoice (its
+      // goods came back; cancel the return first). A return being posted
+      // locks this invoice row, so the two can't happen at the same moment.
+      const postedReturns = await tx.salesReturn.count({
+        where: {
+          salesInvoiceId: id,
+          status: DocumentStatus.POSTED,
+          deletedAt: null,
+        },
+      });
+      if (postedReturns > 0) {
+        throw badRequest(
+          `This invoice has ${postedReturns} POSTED sales return(s): cancel the return(s) first`,
+          ErrorCode.BAD_REQUEST,
+          'status',
+        );
+      }
 
       const invoice = await tx.salesInvoice.findUniqueOrThrow({
         where: { id },
@@ -727,11 +750,23 @@ export class SalesInvoicesService {
   /**
    * GET /sales-invoices/:id/returnable: for every line, in the line's unit:
    * sold (quantity), already returned, still returnable.
-   * returned = POSTED sales returns of the line: 0 until TODO(TASK 5).
+   * returned = sum of the POSTED (not deleted) sales-return lines that
+   * point to the line (DRAFT returns don't count yet).
    */
   async returnable(id: string) {
     await this.getActive(id);
     const invoice = await this.getDetail(id);
+    const rows = await this.prisma.salesReturnLine.groupBy({
+      by: ['salesInvoiceLineId'],
+      where: {
+        salesInvoiceLineId: { in: invoice.lines.map((l) => l.id) },
+        salesReturn: { status: DocumentStatus.POSTED, deletedAt: null },
+      },
+      _sum: { quantity: true },
+    });
+    const returned = new Map(
+      rows.map((r) => [r.salesInvoiceLineId, r._sum.quantity ?? ZERO]),
+    );
     return ok('Returnable quantities returned successfully', {
       invoiceId: invoice.id,
       code: invoice.code,
@@ -744,8 +779,8 @@ export class SalesInvoicesService {
         itemUnit: line.itemUnit,
         unitFactor: line.unitFactor,
         quantity: line.quantity,
-        returnedQuantity: ZERO,
-        remainingQuantity: line.quantity,
+        returnedQuantity: returned.get(line.id) ?? ZERO,
+        remainingQuantity: line.quantity.minus(returned.get(line.id) ?? ZERO),
       })),
     });
   }

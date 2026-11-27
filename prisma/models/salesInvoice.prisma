@@ -51,7 +51,7 @@ model SalesInvoice {
 
   lines                  SalesInvoiceLine[]
   convertedFromQuotation SalesQuotation? // back-relation of SalesQuotation.convertedToInvoiceId
-  // salesReturns SalesReturn[] -> added in TASK 5
+  salesReturns           SalesReturn[] // returns of this invoice
 
   @@index([customerId])
   @@index([branchId])
@@ -61,23 +61,24 @@ model SalesInvoice {
 // البنود. No deletedAt: a DRAFT's lines are replaced on edit; a POSTED
 // invoice can't be edited.
 model SalesInvoiceLine {
-  id              String       @id @default(cuid())
+  id              String            @id @default(cuid())
   salesInvoiceId  String
-  salesInvoice    SalesInvoice @relation(fields: [salesInvoiceId], references: [id], onDelete: Cascade)
+  salesInvoice    SalesInvoice      @relation(fields: [salesInvoiceId], references: [id], onDelete: Cascade)
   productId       String // الصنف
-  product         Product      @relation(fields: [productId], references: [id])
+  product         Product           @relation(fields: [productId], references: [id])
   itemUnitId      String // الوحدة
-  itemUnit        ItemUnit     @relation(fields: [itemUnitId], references: [id])
-  unitFactor      Decimal      @db.Decimal(18, 4) // معامل الوحدة (snapshot)
-  quantity        Decimal      @db.Decimal(18, 4) // الكمية بوحدة البند (5 cartons)
-  baseQuantity    Decimal      @db.Decimal(18, 4) // الكمية بالقطعة (60)
-  unitPrice       Decimal      @db.Decimal(18, 4) // سعر البيع للوحدة (180 a carton)
-  discountPercent Decimal?     @db.Decimal(5, 2) // نسبة خصم البند % (one of the two)
-  discountValue   Decimal?     @db.Decimal(18, 4) // قيمة خصم البند
-  lineTotal       Decimal      @db.Decimal(18, 4) // إجمالي البند (calcLine)
-  stockUnitCost   Decimal      @default(0) @db.Decimal(18, 4) // تكلفة القطعة: the average when posted (10.6818)
-  lineCost        Decimal      @default(0) @db.Decimal(18, 2) // تكلفة البند = -movement.totalCost (640.91)
-  notes           String?      @db.VarChar(250) // ملاحظات
+  itemUnit        ItemUnit          @relation(fields: [itemUnitId], references: [id])
+  unitFactor      Decimal           @db.Decimal(18, 4) // معامل الوحدة (snapshot)
+  quantity        Decimal           @db.Decimal(18, 4) // الكمية بوحدة البند (5 cartons)
+  baseQuantity    Decimal           @db.Decimal(18, 4) // الكمية بالقطعة (60)
+  unitPrice       Decimal           @db.Decimal(18, 4) // سعر البيع للوحدة (180 a carton)
+  discountPercent Decimal?          @db.Decimal(5, 2) // نسبة خصم البند % (one of the two)
+  discountValue   Decimal?          @db.Decimal(18, 4) // قيمة خصم البند
+  lineTotal       Decimal           @db.Decimal(18, 4) // إجمالي البند (calcLine)
+  stockUnitCost   Decimal           @default(0) @db.Decimal(18, 4) // تكلفة القطعة: the average when posted (10.6818)
+  lineCost        Decimal           @default(0) @db.Decimal(18, 2) // تكلفة البند = -movement.totalCost (640.91)
+  notes           String?           @db.VarChar(250) // ملاحظات
+  returnLines     SalesReturnLine[] // return lines that point to this line
 
   @@index([salesInvoiceId])
 }

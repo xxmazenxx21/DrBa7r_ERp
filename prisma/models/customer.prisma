@@ -13,4 +13,5 @@ model Customer {
   deletedAt        DateTime?
   salesQuotations  SalesQuotation[]
   salesInvoices    SalesInvoice[]
+  salesReturns     SalesReturn[]
 }

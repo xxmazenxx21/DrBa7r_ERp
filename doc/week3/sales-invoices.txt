@@ -274,7 +274,12 @@ SALES INVOICE APIs
    URL: /sales-invoices/:id
    Response (200): { "message": "Sales invoice returned successfully", "data": { ...invoice object with grossProfit } }
    Error (404): { "statusCode": 404, "message": "Sales invoice with id xxx not found", "error": "Not Found", "code": "NOT_FOUND", "field": null }
-   (Its sales returns will be listed here with the sales-returns task.)
+   The object also has "salesReturns": the returns of this invoice (not
+   deleted, any status, oldest first; doc/week3/sales-returns.txt):
+     "salesReturns": [
+       { "id": "cmwyym48y00aze8ij0zdt0r43", "code": "SR-2026-000001", "returnDate": "2026-11-28T00:00:00.000Z", "status": "POSTED", "netTotal": "194.94" }
+     ]
+   ([] when there are none; also on create / update / post / cancel.)
 
 4) Update (DRAFT only)
    Method: PATCH
@@ -346,15 +351,20 @@ SALES INVOICE APIs
    Errors:
    - 409 not POSTED
      { "statusCode": 409, "message": "This invoice is CANCELLED: only a POSTED invoice can be cancelled", "error": "Conflict", "code": "INVALID_STATUS", "field": "status" }
-   (With sales returns, coming in the sales-returns task: cancelling an
-   invoice that has a POSTED sales return will be refused - cancel the return first.)
+   - 400 the invoice has a POSTED sales return (its goods came back): cancel
+     the return(s) first. A DRAFT or CANCELLED return does not block it.
+     { "statusCode": 400, "message": "This invoice has 1 POSTED sales return(s): cancel the return(s) first", "error": "Bad Request", "code": "BAD_REQUEST", "field": "status" }
 
 8) Returnable quantities (for sales returns)
    Method: GET
    URL: /sales-invoices/:id/returnable
    Description: For every line, in the LINE's unit (cartons): sold, already
-                returned, still returnable. Sales returns come with a later
-                task, so returnedQuantity is "0" for now.
+                returned, still returnable. returnedQuantity = the POSTED (not
+                deleted) sales returns of the line (DRAFT and CANCELLED ones
+                don't count); remainingQuantity = quantity - returnedQuantity
+                = the most a new return can take (doc/week3/sales-returns.txt).
+   Example after SR-2026-000001 (1 carton) is POSTED: quantity "5",
+   returnedQuantity "1", remainingQuantity "4". Before it (below): 5 / 0 / 5.
    Response (200):
    {
      "message": "Returnable quantities returned successfully",
@@ -396,3 +406,4 @@ Suggested Arabic messages
   BAD_REQUEST + dueDate                   تاريخ الاستحقاق يجب أن يكون بعد تاريخ الفاتورة
   DOES_NOT_EXIST + customerId             العميل غير موجود أو محذوف
   BAD_REQUEST (customer delete)           لا يمكن حذف العميل لأن عليه فواتير بيع
+  BAD_REQUEST + status (cancel)           لا يمكن إلغاء الفاتورة لأن عليها مرتجع مُرحّل، ألغِ المرتجع أولًا

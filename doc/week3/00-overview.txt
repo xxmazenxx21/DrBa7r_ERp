@@ -87,7 +87,10 @@ Modules (task number = the order they are built in)
   post = stock out with cost, cancel = stock back at the same cost), Task 4
   (POST /sales-quotations/:id/convert-to-invoice: an ACCEPTED quotation ->
   CONVERTED + a DRAFT sales invoice; links quotation.convertedToInvoiceId and
-  invoice.convertedFromQuotation { id, code }).
+  invoice.convertedFromQuotation { id, code }), Task 5 (sales returns:
+  always linked to a POSTED sales invoice; post = the goods come back at the
+  cost they left with, cancel = they go out again; a sales invoice with a
+  POSTED return can't be cancelled).
   New document numbers (one counter per type per year):
     SQ-2026-000001 (sales quotation), SI- (sales invoice), SR- (sales return),
     ST- (stock transfer), SC- (stock count).
@@ -98,4 +101,5 @@ Files in this folder
   00-overview.txt        this file
   sales-quotations.txt   /sales-quotations  (عروض أسعار البيع: header + lines, statuses, convert-to-invoice)
   sales-invoices.txt     /sales-invoices    (فواتير البيع: post = stock out + cost, cancel = stock back)
+  sales-returns.txt      /sales-returns     (مرتجعات البيع: linked to an invoice, post = stock back at the sale cost)
   (one file per module is added with each task)

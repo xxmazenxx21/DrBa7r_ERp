@@ -1,0 +1,352 @@
+Sales Returns API Documentation (مرتجعات البيع)
+=============================================
+
+Base URL
+--------
+http://localhost:3000   (the backend runs on your machine with Docker, see README.md)
+
+Authentication & access
+-----------------------
+All endpoints require:  Authorization: Bearer <access_token>   (see doc/week1/auth.txt)
+Only SUPERADMIN can call them:
+  - no / invalid token  -> 401 { "statusCode": 401, "message": "Unauthorized", "error": "Unauthorized", "code": "UNAUTHORIZED", "field": null }
+  - other roles         -> 403 { "statusCode": 403, "message": "You do not have the required roles to access this resource", "error": "Forbidden", "code": "FORBIDDEN", "field": null }
+
+Response shape: every success is { "message": "...", "data": ... }
+Every error has { statusCode, message, error, code, field } (see doc/week1/00-overview.txt)
+Unknown fields (also inside lines) -> 400 "property <name> should not exist"
+Numbers are SENT as numbers and RETURNED as strings. Dates are SENT as
+"YYYY-MM-DD" and RETURNED as "YYYY-MM-DDT00:00:00.000Z".
+
+What is it?
+-----------
+Goods a CUSTOMER brings back (بضاعة راجعة من العميل). The mirror of a purchase
+return linked to an invoice (doc/week2/purchase-returns.txt), the other way
+round:
+  - A sales return is ALWAYS linked to a POSTED sales invoice: salesInvoiceId
+    is required, and every line points to one line of that invoice
+    (salesInvoiceLineId). There are no returns without an invoice.
+  - POST (ترحيل): the goods COME BACK into the invoice's warehouse (stock UP).
+  - CANCEL (إلغاء): the goods go out again (stock DOWN).
+
+  Status (الحالة):
+      DRAFT (مسودة) --post--> POSTED (مُرحّل) --cancel--> CANCELLED (ملغي)
+  - DRAFT: no effect. Can be edited and deleted.
+  - POSTED: final. Can NOT be edited or deleted, only cancelled.
+  - CANCELLED: the goods went out again. The return stays (read only).
+  Any other action -> 409 INVALID_STATUS.
+
+What comes from the invoice (anything you send for it is checked or ignored)
+---------------------------------------------------------------------------
+  customer, branch, warehouse   = the invoice's (send them or not; a DIFFERENT
+                                  value -> 400 on that field)
+  per line: product, unit, unitFactor
+            unitPrice      = invoice line's lineTotal / quantity (line discount included)
+            stockUnitCost  = the invoice line's stockUnitCost (the cost it LEFT with)
+            (productId / itemUnitId / unitPrice sent in a line are IGNORED)
+  discount  = this return's share of the invoice discount:
+              subTotal x invoice.discountValue / invoice.subTotal   (2 decimals)
+              discountPercent = the invoice's (shown only)
+  tax       = the invoice's taxPercent, on (subTotal - discountValue)
+  You send: returnDate, salesInvoiceId, lines [{ salesInvoiceLineId, quantity }],
+            and optionally reason, refundAmount, notes.
+  You never send discount, tax, totals or a cost: they are rejected (400).
+
+The quantity rule (QUANTITY_EXCEEDED)
+-------------------------------------
+  For every invoice line:
+      quantity in this return  <=  sold  -  already returned
+  "already returned" = the POSTED (not deleted) returns of that line; DRAFT
+  and CANCELLED returns don't count. Two lines of the same return pointing to
+  the same invoice line are added together. Quantities are in the invoice
+  line's unit (cartons). Checked when you save (create / edit) AND again when
+  you post (another return may have been posted since the draft was saved).
+  Otherwise -> 400 QUANTITY_EXCEEDED, field "lines.N.quantity":
+  { "statusCode": 400, "message": "Only 5 can still be returned on this invoice line (sold 5, already returned 0)", "error": "Bad Request", "code": "QUANTITY_EXCEEDED", "field": "lines.0.quantity" }
+  GET /sales-invoices/:id/returnable gives sold / returned / remaining per line
+  (doc/week3/sales-invoices.txt, API 8): use it to fill the return form.
+
+The cost rule (rule 5 of Week 3)
+--------------------------------
+  The goods come back at the SAME cost they left with: the invoice line's
+  stockUnitCost, NOT today's average. POST saves
+      lineCost  = baseQuantity x stockUnitCost   (2 decimals)
+      totalCost = sum of lineCost                (header)
+  SERVICE lines: no stock, lineCost 0.
+  The warehouse average is recomputed with that cost. Example: if the average
+  was moved to 20 after the sale, 12 brushes come back at 10.6818 and the
+  average becomes (194 x 20 + 12 x 10.6818) / 206 = 19.4572.
+  CANCEL takes the pieces out again at the warehouse's CURRENT average (like
+  any stock out); totals and costs of the return stay as they were.
+
+The brush example (Week 3 story)
+--------------------------------
+  SI-2026-000001 (POSTED): 5 cartons x 180, discount 5% (45), tax 14%,
+  stockUnitCost 10.6818. Maadi: 158 brushes after it.
+  Return 1 carton -> SR-2026-000001 (DRAFT):
+     lineTotal 180 (1 x 900 / 5), subTotal 180,
+     discountValue 9 (180 x 45 / 900), taxValue 23.94 (14% of 171),
+     netTotal 194.94
+  Return 6 cartons -> 400 QUANTITY_EXCEEDED ("Only 5 can still be returned ...")
+  POST SR-2026-000001 -> SALE_RETURN +12 at 10.6818 -> Maadi 170;
+     lineCost = totalCost = 128.18 (12 x 10.6818)
+  Cancel SI-2026-000001 now -> 400 (it has a POSTED return: cancel the return first)
+  CANCEL SR-2026-000001 -> SALE_RETURN_CANCEL -12 -> Maadi 158
+
+Header fields (Arabic label = what the screen shows)
+----------------------------------------------------
+  field            Arabic                  who               notes
+  ---------------  ----------------------  ----------------  ----------------------------------------
+  id               -                       server
+  code             رقم المرتجع              server            SR-2026-000001 (year = returnDate's year)
+  returnDate       تاريخ المرتجع            user              "2026-11-28" (required)
+  status           الحالة                   server            DRAFT / POSTED / CANCELLED
+  reason           سبب الإرجاع              user, optional    max 250; null clears
+  salesInvoiceId   فاتورة البيع الأصلية      user              REQUIRED, an active POSTED sales invoice
+  customerId       العميل                   server            = the invoice's (if sent: must match)
+  branchId         الفرع                    server            = the invoice's (if sent: must match)
+  warehouseId      المخزن                   server            = the invoice's: the goods come back here
+  subTotal         الإجمالي                 server
+  discountPercent  نسبة الخصم %             server            the invoice's (shown only)
+  discountValue    قيمة الخصم               server            this return's share of the invoice discount
+  taxPercent       نسبة الضريبة %           server            the invoice's
+  taxValue         قيمة الضريبة             server
+  netTotal         الصافي                   server
+  refundAmount     المبلغ المردود للعميل     user, optional    0 .. netTotal (default 0), max 2 decimals
+  totalCost        تكلفة البضاعة الراجعة     server            set by POST (0 while DRAFT)
+  postedDate / postedBy        تاريخ الترحيل / رحّله   server
+  cancelledDate / cancelledBy  تاريخ الإلغاء / ألغاه   server
+  notes            ملاحظات                  user, optional    max 500; null clears
+  createdBy / createdDate / modifiedBy / modifiedDate        server
+
+Line fields (البنود)
+-------------------
+  field               Arabic              who               notes
+  ------------------  ------------------  ----------------  ------------------------------------------
+  salesInvoiceLineId  بند الفاتورة الأصلي  user              REQUIRED, a line of salesInvoiceId
+  productId           الصنف                server            from the invoice line
+  itemUnitId          الوحدة               server            from the invoice line
+  unitFactor          معامل الوحدة          server            from the invoice line (carton = 12)
+  quantity            الكمية               user              in the invoice line's unit; > 0, max 4 decimals
+  baseQuantity        الكمية بالقطعة        server            quantity x unitFactor (12)
+  unitPrice           سعر الوحدة           server            invoice lineTotal / quantity (180)
+  lineTotal           إجمالي البند          server            quantity x unitPrice
+  stockUnitCost       تكلفة القطعة          server            the invoice line's stockUnitCost (10.6818)
+  lineCost            تكلفة البند           server            set by POST (128.18), 0 before
+  notes               ملاحظات              user, optional    max 250
+
+Return object (create / update / get one / post / cancel) - real POSTED example
+------------------------------------------------------------------------------
+{
+  "id": "cmwyym48y00aze8ij0zdt0r43",
+  "code": "SR-2026-000001",
+  "returnDate": "2026-11-28T00:00:00.000Z",
+  "status": "POSTED",
+  "reason": "تالف",
+  "salesInvoiceId": "cmwyym44y00aje8ijv791n5mo",
+  "customerId": "cmwyym43800aee8ijed3uo9is",
+  "branchId": "cmwyym3u2009he8ijj6gbqjtr",
+  "warehouseId": "cmwyym3u8009ie8ijdwh3bo59",
+  "subTotal": "180",
+  "discountPercent": "5",
+  "discountValue": "9",
+  "taxPercent": "14",
+  "taxValue": "23.94",
+  "netTotal": "194.94",
+  "refundAmount": "0",
+  "totalCost": "128.18",
+  "postedDate": "2026-11-27T12:30:33.747Z",
+  "postedBy": "526b5d51-81c7-487a-aa56-b59b1e2b1142",
+  "cancelledDate": null,
+  "cancelledBy": null,
+  "notes": null,
+  "createdBy": "526b5d51-81c7-487a-aa56-b59b1e2b1142",
+  "createdDate": "2026-11-27T12:30:33.730Z",
+  "modifiedBy": null,
+  "modifiedDate": "2026-11-27T12:30:33.760Z",
+  "deletedAt": null,
+  "customer": { "id": "cmwyym43800aee8ijed3uo9is", "code": "CUS-830924", "name": "صيدلية الشفاء" },
+  "branch": { "id": "cmwyym3u2009he8ijj6gbqjtr", "code": "branch-476799", "name": "فرع المعادي" },
+  "warehouse": { "id": "cmwyym3u8009ie8ijdwh3bo59", "name": "مخزن المعادي" },
+  "salesInvoice": { "id": "cmwyym44y00aje8ijv791n5mo", "code": "SI-2026-000001", "invoiceDate": "2026-11-27T00:00:00.000Z", "status": "POSTED" },
+  "createdByUser": { "id": "526b5d51-81c7-487a-aa56-b59b1e2b1142", "username": "admin" },
+  "modifiedByUser": null,
+  "postedByUser": { "id": "526b5d51-81c7-487a-aa56-b59b1e2b1142", "username": "admin" },
+  "cancelledByUser": null,
+  "lines": [
+    {
+      "id": "cmwyym48z00b0e8ij70lcjlyd",
+      "salesReturnId": "cmwyym48y00aze8ij0zdt0r43",
+      "salesInvoiceLineId": "cmwyym44z00ake8ijuqcjl0c1",
+      "productId": "cmwyym3ux009me8ij1ismw8c5",
+      "itemUnitId": "cmwyym3uq009le8ijtmo5m4lv",
+      "unitFactor": "12",
+      "quantity": "1",
+      "baseQuantity": "12",
+      "unitPrice": "180",
+      "lineTotal": "180",
+      "stockUnitCost": "10.6818",
+      "lineCost": "128.18",
+      "notes": null,
+      "product": { "id": "cmwyym3ux009me8ij1ismw8c5", "code": "PRD-526969", "name": "فرشة", "itemType": "STOCK" },
+      "itemUnit": { "id": "cmwyym3uq009le8ijtmo5m4lv", "code": "unit-286533", "name": "كرتونة" },
+      "salesInvoiceLine": { "id": "cmwyym44z00ake8ijuqcjl0c1", "quantity": "5", "unitPrice": "180", "lineTotal": "900", "stockUnitCost": "10.6818" }
+    }
+  ]
+}
+The same return right after create (DRAFT): status "DRAFT", postedDate /
+postedBy null, totalCost "0", lineCost "0" (stockUnitCost is already "10.6818").
+
+---------------------------------------------------------
+SALES RETURN APIs
+---------------------------------------------------------
+
+1) Create (DRAFT)
+   Method: POST
+   URL: /sales-returns
+
+   Request Example (1 carton of SI-2026-000001):
+   {
+     "returnDate": "2026-11-28",
+     "reason": "تالف",
+     "salesInvoiceId": "cmwyym44y00aje8ijv791n5mo",
+     "refundAmount": 0,
+     "lines": [
+       { "salesInvoiceLineId": "cmwyym44z00ake8ijuqcjl0c1", "quantity": 1 }
+     ]
+   }
+
+   Response (201): { "message": "Sales return created successfully", "data": { ...return object, "status": "DRAFT", "totalCost": "0" } }
+   No stock change.
+
+   Error Responses:
+   - 400 no salesInvoiceId
+     { "statusCode": 400, "message": ["salesInvoiceId should not be empty", "salesInvoiceId must be a string"], "error": "Bad Request", "code": "VALIDATION_FAILED", "field": "salesInvoiceId" }
+   - 400 the invoice is missing or deleted
+     { "statusCode": 400, "message": "salesInvoiceId does not exist", "error": "Bad Request", "code": "DOES_NOT_EXIST", "field": "salesInvoiceId" }
+   - 400 the invoice is not POSTED (DRAFT or CANCELLED)
+     { "statusCode": 400, "message": "salesInvoiceId must be a POSTED invoice (this one is DRAFT)", "error": "Bad Request", "code": "BAD_REQUEST", "field": "salesInvoiceId" }
+   - 400 customerId / branchId / warehouseId sent and different from the invoice's
+     { "statusCode": 400, "message": "customerId must be the invoice's customer", "error": "Bad Request", "code": "BAD_REQUEST", "field": "customerId" }
+     ("branchId must be the invoice's branch", "warehouseId must be the invoice's warehouse")
+   - 400 no lines
+     { "statusCode": 400, "message": ["lines must contain at least 1 elements"], "error": "Bad Request", "code": "VALIDATION_FAILED", "field": "lines" }
+   - 400 a line without salesInvoiceLineId (N = line index, starting at 0)
+     { "statusCode": 400, "message": ["lines.0.salesInvoiceLineId should not be empty", "lines.0.salesInvoiceLineId must be a string"], "error": "Bad Request", "code": "VALIDATION_FAILED", "field": "lines.0.salesInvoiceLineId" }
+   - 400 a line of ANOTHER invoice
+     { "statusCode": 400, "message": "salesInvoiceLineId is not a line of salesInvoiceId", "error": "Bad Request", "code": "BAD_REQUEST", "field": "lines.0.salesInvoiceLineId" }
+   - 400 more than can still be returned
+     { "statusCode": 400, "message": "Only 5 can still be returned on this invoice line (sold 5, already returned 0)", "error": "Bad Request", "code": "QUANTITY_EXCEEDED", "field": "lines.0.quantity" }
+   - 400 refund more than the net
+     { "statusCode": 400, "message": "refundAmount must not be more than netTotal (194.94)", "error": "Bad Request", "code": "BAD_REQUEST", "field": "refundAmount" }
+   - 400 sending a discount, tax, total, cost, code or status, e.g.
+     { "statusCode": 400, "message": ["property discountPercent should not exist"], "error": "Bad Request", "code": "VALIDATION_FAILED", "field": "discountPercent" }
+     { "statusCode": 400, "message": ["lines.0.property stockUnitCost should not exist"], "error": "Bad Request", "code": "VALIDATION_FAILED", "field": "lines.0.stockUnitCost" }
+
+2) List
+   Method: GET
+   URL: /sales-returns
+   Description: PAGINATED, newest returnDate first. Each item = header +
+                customer / branch / warehouse + "salesInvoice": { id, code } +
+                "_count": { "lines": N }. NO lines (open one return to see them).
+   Query (all optional): customerId, salesInvoiceId, status (DRAFT / POSTED /
+   CANCELLED), dateFrom, dateTo (returnDate, inclusive), page, pageSize.
+   Response (200):
+   { "message": "Sales returns returned successfully", "data": { "items": [ ... ], "meta": { "page": 1, "pageSize": 20, "total": 1, "totalPages": 1 } } }
+
+3) Get one
+   Method: GET
+   URL: /sales-returns/:id
+   Response (200): { "message": "Sales return returned successfully", "data": { ...return object } }
+   Error (404): { "statusCode": 404, "message": "Sales return with id xxx not found", "error": "Not Found", "code": "NOT_FOUND", "field": null }
+
+4) Update (DRAFT only)
+   Method: PATCH
+   URL: /sales-returns/:id
+   Description: Any field from Create, all optional. The request is merged
+                with what is saved and the WHOLE return is checked and
+                computed again (like a create). "lines", when sent, REPLACES
+                ALL the lines. null clears reason / notes; null on other
+                fields -> 400. Changing salesInvoiceId without sending new
+                lines -> 400 (the old lines are not lines of the new invoice).
+   Request Example: { "lines": [ { "salesInvoiceLineId": "cmwyym44z00ake8ijuqcjl0c1", "quantity": 2 } ] }
+   Response (200): { "message": "Sales return updated successfully", "data": { ...return object } }
+   Errors: the same 400s as Create, and
+   { "statusCode": 409, "message": "This return is POSTED: only a DRAFT return can be edited", "error": "Conflict", "code": "INVALID_STATUS", "field": "status" }
+
+5) Delete (DRAFT only)
+   Method: DELETE
+   URL: /sales-returns/:id
+   Response (200): { "message": "Sales return deleted successfully", "data": null }
+   Error (409):
+   { "statusCode": 409, "message": "Only a DRAFT return can be deleted (cancel a POSTED return instead)", "error": "Conflict", "code": "INVALID_STATUS", "field": "status" }
+
+6) Post (ترحيل) - the goods come BACK (stock UP)
+   Method: POST
+   URL: /sales-returns/:id/post
+   Body: none
+   Description: DRAFT -> POSTED, all or nothing. The invoice must still be
+                POSTED and the quantity rule is checked again. Every STOCK
+                line puts baseQuantity pieces back into the invoice's
+                warehouse at the line's stockUnitCost (the cost they left
+                with) and saves lineCost; the header gets totalCost. Pressing
+                it twice can't post twice.
+   Response (201): { "message": "Sales return posted successfully", "data": { ...return object, "status": "POSTED", "totalCost": "128.18" } }
+
+   Effect on the item card (GET /stock-movements/item-card), brush in Maadi:
+     type         quantity  unitCost  totalCost  balanceAfter  avgCostAfter  sourceCode
+     SALE_RETURN  +12       10.6818   128.18     170           10.6818       SR-2026-000001
+     (مرتجع بيع = SALE_RETURN)
+
+   Errors:
+   - 409 not DRAFT
+     { "statusCode": 409, "message": "This return is POSTED: only a DRAFT return can be posted", "error": "Conflict", "code": "INVALID_STATUS", "field": "status" }
+   - 400 the invoice was cancelled after the draft was saved (the return stays DRAFT)
+     { "statusCode": 400, "message": "salesInvoiceId must be a POSTED invoice (this one is CANCELLED)", "error": "Bad Request", "code": "BAD_REQUEST", "field": "salesInvoiceId" }
+   - 400 another return of the same line was posted in between
+     { "statusCode": 400, "message": "Only 2 can still be returned on this invoice line (sold 5, already returned 3)", "error": "Bad Request", "code": "QUANTITY_EXCEEDED", "field": "lines.0.quantity" }
+   - 400 the warehouse was deleted
+     { "statusCode": 400, "message": "warehouseId does not exist", "error": "Bad Request", "code": "DOES_NOT_EXIST", "field": "warehouseId" }
+
+7) Cancel (إلغاء) - the goods go out again (stock DOWN)
+   Method: POST
+   URL: /sales-returns/:id/cancel
+   Body: none
+   Description: POSTED -> CANCELLED. Every piece the posting put back is taken
+                out again (at the warehouse's current average). Nothing else
+                changes (totals, lineCost, totalCost stay). After this the
+                invoice can be cancelled again, and the quantity can be
+                returned again.
+   Response (201): { "message": "Sales return cancelled successfully", "data": { ...return object, "status": "CANCELLED" } }
+
+   Effect on the item card, brush in Maadi:
+     type                quantity  unitCost  totalCost  balanceAfter  avgCostAfter  sourceCode
+     SALE_RETURN_CANCEL  -12       10.6818   -128.18    158           10.6818       SR-2026-000001
+     (إلغاء مرتجع بيع = SALE_RETURN_CANCEL)
+
+   Errors:
+   - 409 not POSTED
+     { "statusCode": 409, "message": "This return is CANCELLED: only a POSTED return can be cancelled", "error": "Conflict", "code": "INVALID_STATUS", "field": "status" }
+   - 400 the returned goods were sold again (not enough stock; nothing changes)
+     { "statusCode": 400, "message": "Insufficient stock: available 1, requested 4", "error": "Bad Request", "code": "INSUFFICIENT_STOCK", "field": "lines.0.quantity" }
+
+Links with the sales invoice (doc/week3/sales-invoices.txt)
+-----------------------------------------------------------
+  - GET /sales-invoices/:id lists "salesReturns": [{ id, code, returnDate, status, netTotal }]
+    (not deleted, any status). Show them as links.
+  - GET /sales-invoices/:id/returnable: returnedQuantity = POSTED returns.
+  - POST /sales-invoices/:id/cancel is refused while a POSTED return exists:
+    { "statusCode": 400, "message": "This invoice has 1 POSTED sales return(s): cancel the return(s) first", "error": "Bad Request", "code": "BAD_REQUEST", "field": "status" }
+    A DRAFT return does not block it (but can't be posted afterwards).
+
+Suggested Arabic messages
+-------------------------
+  INVALID_STATUS                              لا يمكن تنفيذ العملية في حالة المستند الحالية
+  QUANTITY_EXCEEDED + lines.N.quantity        الكمية المرتجعة أكبر من المتبقي من الفاتورة
+  INSUFFICIENT_STOCK + lines.N.quantity       لا يمكن إلغاء المرتجع: البضاعة غير موجودة في المخزن (تم بيعها)
+  BAD_REQUEST + salesInvoiceId                يجب اختيار فاتورة بيع مُرحّلة
+  DOES_NOT_EXIST + salesInvoiceId             فاتورة البيع غير موجودة أو محذوفة
+  BAD_REQUEST + lines.N.salesInvoiceLineId    هذا البند ليس من بنود الفاتورة المختارة
+  BAD_REQUEST + customerId / branchId / warehouseId   العميل والفرع والمخزن يجب أن يكونوا نفس بيانات الفاتورة
+  BAD_REQUEST + refundAmount                  المبلغ المردود أكبر من صافي المرتجع
+  BAD_REQUEST + status (invoice cancel)       لا يمكن إلغاء الفاتورة لأن عليها مرتجع مُرحّل، ألغِ المرتجع أولًا
