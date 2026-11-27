@@ -171,3 +171,15 @@ CUSTOMER APIs
    }
 
    Error Response (404): same as Update.
+
+   Error Response (400 - the customer has sales invoices, Week 3):
+   A customer used by any (not deleted) sales invoice, in any status, can't
+   be deleted:
+   {
+     "statusCode": 400,
+     "message": "Customer is used by 3 sales invoice(s) and cannot be deleted",
+     "error": "Bad Request",
+     "code": "BAD_REQUEST",
+     "field": null
+   }
+   Arabic: لا يمكن حذف العميل لأن عليه فواتير بيع

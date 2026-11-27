@@ -20,7 +20,8 @@ model SalesQuotation {
   taxPercent           Decimal              @default(0) @db.Decimal(5, 2) // نسبة الضريبة %
   taxValue             Decimal              @default(0) @db.Decimal(18, 2) // قيمة الضريبة
   netTotal             Decimal              @default(0) @db.Decimal(18, 2) // الصافي
-  convertedToInvoiceId String?              @unique // الفاتورة الناتجة (relation added in TASK 3)
+  convertedToInvoiceId String?              @unique // الفاتورة الناتجة (set by convert-to-invoice)
+  convertedToInvoice   SalesInvoice?        @relation(fields: [convertedToInvoiceId], references: [id])
   notes                String?              @db.VarChar(500) // ملاحظات
   createdBy            String // أنشأه (from the token)
   createdByUser        User                 @relation("CreatedSalesQuotations", fields: [createdBy], references: [id])

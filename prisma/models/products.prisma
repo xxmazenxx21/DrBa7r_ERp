@@ -35,6 +35,7 @@ model Product {
   purchaseInvoiceLines   PurchaseInvoiceLine[]
   purchaseReturnLines    PurchaseReturnLine[]
   salesQuotationLines    SalesQuotationLine[]
+  salesInvoiceLines      SalesInvoiceLine[]
 }
 
 model ProductInventory {
