@@ -22,17 +22,19 @@ model User {
 
   lastLoginDate DateTime?
 
-  postedInvoices     PurchaseInvoice[]   @relation("PostedInvoices")
-  createdInvoices    PurchaseInvoice[]   @relation("CreatedInvoices")
-  modifiedInvoices   PurchaseInvoice[]   @relation("ModifiedInvoices")
-  cancelledInvoices  PurchaseInvoice[]   @relation("CancelledInvoices")
-  createdReturns     PurchaseReturn[]    @relation("CreatedReturns")
-  modifiedReturns    PurchaseReturn[]    @relation("ModifiedReturns")
-  postedReturns      PurchaseReturn[]    @relation("PostedReturns")
-  cancelledReturns   PurchaseReturn[]    @relation("CancelledReturns")
-  stockMovements     StockMovement[]
-  createdQuotations  PurchaseQuotation[] @relation("CreatedQuotations")
-  modifiedQuotations PurchaseQuotation[] @relation("ModifiedQuotations")
+  postedInvoices          PurchaseInvoice[]   @relation("PostedInvoices")
+  createdInvoices         PurchaseInvoice[]   @relation("CreatedInvoices")
+  modifiedInvoices        PurchaseInvoice[]   @relation("ModifiedInvoices")
+  cancelledInvoices       PurchaseInvoice[]   @relation("CancelledInvoices")
+  createdReturns          PurchaseReturn[]    @relation("CreatedReturns")
+  modifiedReturns         PurchaseReturn[]    @relation("ModifiedReturns")
+  postedReturns           PurchaseReturn[]    @relation("PostedReturns")
+  cancelledReturns        PurchaseReturn[]    @relation("CancelledReturns")
+  createdSalesQuotations  SalesQuotation[]    @relation("CreatedSalesQuotations")
+  modifiedSalesQuotations SalesQuotation[]    @relation("ModifiedSalesQuotations")
+  stockMovements          StockMovement[]
+  createdQuotations       PurchaseQuotation[] @relation("CreatedQuotations")
+  modifiedQuotations      PurchaseQuotation[] @relation("ModifiedQuotations")
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt

@@ -671,3 +671,87 @@ Authorization: Bearer {{w2token}}
     }
   ]
 }
+
+### =====================================================================
+### WEEK 3 - SALES QUOTATIONS (samples, not the big test)
+### =====================================================================
+# Uses the data of "WEEK 2 - THE BIG TEST" above (run it first): w2token,
+# the Maadi branch / warehouse, the brush and its carton unit.
+
+### A customer: صيدلية الشفاء
+# @name w3customer
+POST {{baseUrl}}/customer
+Content-Type: application/json
+Authorization: Bearer {{w2token}}
+
+{
+  "name": "صيدلية الشفاء"
+}
+
+### Sales quotation: 5 cartons x 180, discount 5%, tax 14% -> SQ-2026-000001, netTotal 974.70
+# @name w3quotation
+POST {{baseUrl}}/sales-quotations
+Content-Type: application/json
+Authorization: Bearer {{w2token}}
+
+{
+  "quotationDate": "2026-11-27",
+  "validUntil": "2026-12-10",
+  "customerId": "{{w3customer.response.body.$.data.id}}",
+  "branchId": "{{w2branch.response.body.$.data.id}}",
+  "warehouseId": "{{w2warehouse.response.body.$.data.id}}",
+  "discountPercent": 5,
+  "taxPercent": 14,
+  "lines": [
+    {
+      "productId": "{{w2brush.response.body.$.data.id}}",
+      "itemUnitId": "{{w2carton.response.body.$.data.id}}",
+      "quantity": 5,
+      "unitPrice": 180
+    }
+  ]
+}
+
+### DRAFT -> ACCEPTED directly -> 409 INVALID_STATUS
+PATCH {{baseUrl}}/sales-quotations/{{w3quotation.response.body.$.data.id}}/status
+Content-Type: application/json
+Authorization: Bearer {{w2token}}
+
+{
+  "status": "ACCEPTED"
+}
+
+### DRAFT -> SENT
+PATCH {{baseUrl}}/sales-quotations/{{w3quotation.response.body.$.data.id}}/status
+Content-Type: application/json
+Authorization: Bearer {{w2token}}
+
+{
+  "status": "SENT"
+}
+
+### Edit while SENT ("lines" would REPLACE all lines)
+PATCH {{baseUrl}}/sales-quotations/{{w3quotation.response.body.$.data.id}}
+Content-Type: application/json
+Authorization: Bearer {{w2token}}
+
+{
+  "notes": "السعر شامل التوصيل"
+}
+
+### SENT -> ACCEPTED
+PATCH {{baseUrl}}/sales-quotations/{{w3quotation.response.body.$.data.id}}/status
+Content-Type: application/json
+Authorization: Bearer {{w2token}}
+
+{
+  "status": "ACCEPTED"
+}
+
+### One sales quotation (lines + isExpired)
+GET {{baseUrl}}/sales-quotations/{{w3quotation.response.body.$.data.id}}
+Authorization: Bearer {{w2token}}
+
+### List (paginated; filters customerId, branchId, status, dateFrom, dateTo, search)
+GET {{baseUrl}}/sales-quotations?status=ACCEPTED&page=1&pageSize=20
+Authorization: Bearer {{w2token}}
