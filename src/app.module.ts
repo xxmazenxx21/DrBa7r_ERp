@@ -24,6 +24,7 @@ import { PurchaseReturnsModule } from './purchase-returns/purchase-returns.modul
 import { SalesQuotationsModule } from './sales-quotations/sales-quotations.module';
 import { SalesInvoicesModule } from './sales-invoices/sales-invoices.module';
 import { SalesReturnsModule } from './sales-returns/sales-returns.module';
+import { StockTransfersModule } from './stock-transfers/stock-transfers.module';
 import { JwtModule } from '@nestjs/jwt';
 import { APP_GUARD } from '@nestjs/core';
 import { AuthGuard } from './guards/auth.guard';
@@ -63,6 +64,7 @@ import { RolesGuard } from './guards/roles.guard';
     SalesQuotationsModule,
     SalesInvoicesModule,
     SalesReturnsModule,
+    StockTransfersModule,
   ],
   controllers: [AppController],
   providers: [

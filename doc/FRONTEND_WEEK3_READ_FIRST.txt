@@ -4,11 +4,11 @@ FRONTEND - READ THIS FIRST (Week 3 backend changes)
 >>> This file is updated with every Week 3 task. Check the "Last update" line
 >>> below after every pull.
 
-Last update: Week 3 Task 5 (sales returns: PART 5; sales invoice cancel /
-returnable / salesReturns: end of PART 3).
+Last update: Week 3 Task 6 (stock transfers: PART 6).
 Changes to screens you already built (Week 1 / Week 2): PART 0 - check it first.
 New endpoints: PART 2 (sales quotations), PART 3 (sales invoices),
-PART 4 (POST /sales-quotations/:id/convert-to-invoice), PART 5 (sales returns).
+PART 4 (POST /sales-quotations/:id/convert-to-invoice), PART 5 (sales returns),
+PART 6 (stock transfers).
 New enum values: PART 1.
 
 
@@ -337,3 +337,70 @@ Arabic labels (new keys)
                   lineTotal = إجمالي البند, stockUnitCost = تكلفة القطعة,
                   lineCost = تكلفة البند
   Item card types: SALE_RETURN = مرتجع بيع (+), SALE_RETURN_CANCEL = إلغاء مرتجع بيع (-)
+
+
+=====================================================================
+PART 6 - STOCK TRANSFERS (التحويلات المخزنية)  - doc/week3/stock-transfers.txt
+=====================================================================
+    POST   /stock-transfers             new DRAFT transfer with its lines
+    GET    /stock-transfers             list (PAGINATED; filters fromWarehouseId,
+                                        toWarehouseId, status, dateFrom, dateTo,
+                                        search = code / notes)
+    GET    /stock-transfers/:id         header + lines + both warehouses { id, name, branch }
+    PATCH  /stock-transfers/:id         edit (DRAFT only; "lines" REPLACES all lines)
+    DELETE /stock-transfers/:id         soft delete (DRAFT only)
+    POST   /stock-transfers/:id/post    ترحيل: out of "from" AND into "to" (one step)
+    POST   /stock-transfers/:id/cancel  إلغاء: the goods go back to "from"
+  Goods moved between two warehouses (same branch or two branches). ONE
+  step: there is no "in transit"; after POST the destination has the goods.
+  No customer / supplier, no prices.
+
+  The form: transferDate (تاريخ التحويل), fromWarehouseId (من مخزن),
+  toWarehouseId (إلى مخزن; hide the "from" warehouse in this list), notes,
+  and lines { productId, itemUnitId, quantity, notes? } - STOCK products only
+  (filter out SERVICE items). Don't send any cost or price (400).
+  Tip: show the available quantity of the "from" warehouse next to each line
+  (GET /product-inventory/inventory/:inventoryId); the server checks it on POST.
+
+  The cost: every piece moves at the SOURCE warehouse's average at the moment
+  of the post (line unitCost, header totalCost = قيمة التحويل). Cancel puts
+  them back into the source at that same cost.
+
+  Example (the brush): 2 cartons Maadi -> Nasr City -> ST-2026-000001.
+  POST -> item card Maadi TRANSFER_OUT -24 at 10.6818, Nasr City TRANSFER_IN
+  +24 at 10.6818; totalCost 256.36. CANCEL -> TRANSFER_IN_CANCEL -24 (Nasr
+  City), TRANSFER_OUT_CANCEL +24 (Maadi).
+
+  Errors (code + field -> suggested Arabic):
+    400 BAD_REQUEST, field "toWarehouseId": the same warehouse in "from" and "to"
+      { "statusCode": 400, "message": "toWarehouseId must be different from fromWarehouseId", "error": "Bad Request", "code": "BAD_REQUEST", "field": "toWarehouseId" }
+      Arabic: المخزن المحوَّل إليه يجب أن يكون مختلفًا عن المخزن المحوَّل منه
+    400 DOES_NOT_EXIST, field "fromWarehouseId" / "toWarehouseId": missing / deleted warehouse
+      Arabic: المخزن غير موجود أو محذوف
+    400 BAD_REQUEST, field "lines.N.productId": a SERVICE product
+      { "statusCode": 400, "message": "Service items (SERVICE) have no stock", "error": "Bad Request", "code": "BAD_REQUEST", "field": "lines.0.productId" }
+      Arabic: لا يمكن تحويل صنف خدمي (ليس له مخزون)
+    400 INSUFFICIENT_STOCK, field "lines.N.quantity":
+      on POST: the source doesn't have enough; on CANCEL: the destination
+      already sold / moved the goods. Nothing changes.
+      { "statusCode": 400, "message": "Insufficient stock: available 12, requested 24", "error": "Bad Request", "code": "INSUFFICIENT_STOCK", "field": "lines.0.quantity" }
+      Arabic: الكمية المتاحة في المخزن غير كافية
+    409 INVALID_STATUS, field "status": edit / delete / post / cancel in the wrong status
+      Arabic: لا يمكن تنفيذ العملية في حالة المستند الحالية
+
+  Buttons by status:
+    DRAFT مسودة      حفظ، حذف، ترحيل         (PATCH, DELETE, POST /post)
+    POSTED مُرحّل     إلغاء                    (POST /cancel)
+    CANCELLED ملغي   -                        read only
+
+Arabic labels (new keys)
+  Stock transfer: code = رقم التحويل, transferDate = تاريخ التحويل, status = الحالة,
+                  fromWarehouseId = من مخزن, toWarehouseId = إلى مخزن,
+                  totalCost = قيمة التحويل, notes = ملاحظات,
+                  postedDate / postedBy = تاريخ الترحيل / رحّله,
+                  cancelledDate / cancelledBy = تاريخ الإلغاء / ألغاه
+  Transfer line:  productId = الصنف, itemUnitId = الوحدة, unitFactor = معامل الوحدة,
+                  quantity = الكمية, baseQuantity = الكمية بالقطعة,
+                  unitCost = تكلفة القطعة, notes = ملاحظات
+  Item card types: TRANSFER_OUT = تحويل صادر (-), TRANSFER_IN = تحويل وارد (+),
+                   TRANSFER_OUT_CANCEL = إلغاء تحويل صادر (+), TRANSFER_IN_CANCEL = إلغاء تحويل وارد (-)

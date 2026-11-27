@@ -1,0 +1,55 @@
+// التحويلات المخزنية: goods moved from one warehouse to another (same branch
+// or two branches). ONE step (Week 3 decision 1): POSTING takes the goods out
+// of fromWarehouse and puts them into toWarehouse in the same transaction, at
+// the source average cost. No customer, no supplier, no prices. CANCELLING
+// moves them back at the same cost.
+
+// الرأس
+model StockTransfer {
+  id              String              @id @default(cuid())
+  code            String              @unique // رقم التحويل: ST-2026-000001 (NumberingService)
+  transferDate    DateTime            @db.Date // تاريخ التحويل
+  status          DocumentStatus      @default(DRAFT) // الحالة
+  fromWarehouseId String // من مخزن
+  fromWarehouse   Inventory           @relation("TransfersOut", fields: [fromWarehouseId], references: [id])
+  toWarehouseId   String // إلى مخزن (must be different)
+  toWarehouse     Inventory           @relation("TransfersIn", fields: [toWarehouseId], references: [id])
+  totalCost       Decimal             @default(0) @db.Decimal(18, 2) // قيمة التحويل (set on post)
+  postedDate      DateTime? // تاريخ الترحيل
+  postedBy        String? // رحّله
+  postedByUser    User?               @relation("PostedStockTransfers", fields: [postedBy], references: [id])
+  cancelledDate   DateTime? // تاريخ الإلغاء
+  cancelledBy     String? // ألغاه
+  cancelledByUser User?               @relation("CancelledStockTransfers", fields: [cancelledBy], references: [id])
+  notes           String?             @db.VarChar(500) // ملاحظات
+  createdBy       String // أنشأه (from the token)
+  createdByUser   User                @relation("CreatedStockTransfers", fields: [createdBy], references: [id])
+  createdDate     DateTime            @default(now()) // تاريخ الإنشاء
+  modifiedBy      String? // عدّله
+  modifiedByUser  User?               @relation("ModifiedStockTransfers", fields: [modifiedBy], references: [id])
+  modifiedDate    DateTime?           @updatedAt // تاريخ التعديل
+  deletedAt       DateTime? // تاريخ المسح
+  lines           StockTransferLine[]
+
+  @@index([fromWarehouseId])
+  @@index([toWarehouseId])
+  @@index([transferDate])
+}
+
+// البنود (no deletedAt: a DRAFT's lines are replaced on edit)
+model StockTransferLine {
+  id              String        @id @default(cuid())
+  stockTransferId String
+  stockTransfer   StockTransfer @relation(fields: [stockTransferId], references: [id], onDelete: Cascade)
+  productId       String // الصنف (STOCK only)
+  product         Product       @relation(fields: [productId], references: [id])
+  itemUnitId      String // الوحدة
+  itemUnit        ItemUnit      @relation(fields: [itemUnitId], references: [id])
+  unitFactor      Decimal       @db.Decimal(18, 4) // معامل الوحدة
+  quantity        Decimal       @db.Decimal(18, 4) // الكمية (> 0)
+  baseQuantity    Decimal       @db.Decimal(18, 4) // الكمية بالقطعة
+  unitCost        Decimal       @default(0) @db.Decimal(18, 4) // تكلفة القطعة: source average when posted
+  notes           String?       @db.VarChar(250) // ملاحظات
+
+  @@index([stockTransferId])
+}

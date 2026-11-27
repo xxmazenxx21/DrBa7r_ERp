@@ -998,3 +998,173 @@ Authorization: Bearer {{w2token}}
 ### Item card of the brush in Maadi: ... SALE -60, SALE_RETURN +12, SALE_RETURN_CANCEL -12, SALE_CANCEL +60 -> 218 @ 10.6818
 GET {{baseUrl}}/stock-movements/item-card?productId={{w2brush.response.body.$.data.id}}&warehouseId={{w2warehouse.response.body.$.data.id}}
 Authorization: Bearer {{w2token}}
+
+### =====================================================================
+### WEEK 3 - STOCK TRANSFERS (samples, not the big test)
+### =====================================================================
+# Uses "WEEK 2 - THE BIG TEST" and the Week 3 sections above (run them first,
+# in order): Maadi has 218 brushes @ 10.6818. A transfer is ONE step: posting
+# takes the goods out of one warehouse and puts them into the other at the
+# source average cost (no prices). Any two warehouses, also of two branches.
+
+### A second branch: فرع مدينة نصر
+# @name w3nasrBranch
+POST {{baseUrl}}/branch
+Content-Type: application/json
+Authorization: Bearer {{w2token}}
+
+{
+  "name": "فرع مدينة نصر",
+  "address": "مدينة نصر"
+}
+
+### Its warehouse: مخزن مدينة نصر (empty)
+# @name w3nasr
+POST {{baseUrl}}/inventory/branch/{{w3nasrBranch.response.body.$.data.id}}
+Content-Type: application/json
+Authorization: Bearer {{w2token}}
+
+{
+  "name": "مخزن مدينة نصر",
+  "address": "مدينة نصر"
+}
+
+### Transfer 2 cartons Maadi -> Nasr City -> ST-2026-000001 DRAFT (no stock change yet)
+# @name w3transfer
+POST {{baseUrl}}/stock-transfers
+Content-Type: application/json
+Authorization: Bearer {{w2token}}
+
+{
+  "transferDate": "2026-11-29",
+  "fromWarehouseId": "{{w2warehouse.response.body.$.data.id}}",
+  "toWarehouseId": "{{w3nasr.response.body.$.data.id}}",
+  "notes": "تحويل لفرع مدينة نصر",
+  "lines": [
+    {
+      "productId": "{{w2brush.response.body.$.data.id}}",
+      "itemUnitId": "{{w2carton.response.body.$.data.id}}",
+      "quantity": 2
+    }
+  ]
+}
+
+### Same warehouse in "from" and "to" -> 400 BAD_REQUEST, field toWarehouseId
+POST {{baseUrl}}/stock-transfers
+Content-Type: application/json
+Authorization: Bearer {{w2token}}
+
+{
+  "transferDate": "2026-11-29",
+  "fromWarehouseId": "{{w2warehouse.response.body.$.data.id}}",
+  "toWarehouseId": "{{w2warehouse.response.body.$.data.id}}",
+  "lines": [
+    {
+      "productId": "{{w2brush.response.body.$.data.id}}",
+      "itemUnitId": "{{w2carton.response.body.$.data.id}}",
+      "quantity": 2
+    }
+  ]
+}
+
+### A SERVICE product (خدمي): خدمة توصيل
+# @name w3service
+POST {{baseUrl}}/products
+Content-Type: application/json
+Authorization: Bearer {{w2token}}
+
+{
+  "name": "خدمة توصيل",
+  "categoryId": "{{w2category.response.body.$.data.id}}",
+  "primaryItemUnitId": "{{w2piece.response.body.$.data.id}}",
+  "itemType": "SERVICE",
+  "retailPrice": 50,
+  "wholesalePrice": 50,
+  "bulkWholesalePrice": 50
+}
+
+### Transfer a SERVICE product -> 400 BAD_REQUEST, field lines.0.productId
+POST {{baseUrl}}/stock-transfers
+Content-Type: application/json
+Authorization: Bearer {{w2token}}
+
+{
+  "transferDate": "2026-11-29",
+  "fromWarehouseId": "{{w2warehouse.response.body.$.data.id}}",
+  "toWarehouseId": "{{w3nasr.response.body.$.data.id}}",
+  "lines": [
+    {
+      "productId": "{{w3service.response.body.$.data.id}}",
+      "itemUnitId": "{{w2piece.response.body.$.data.id}}",
+      "quantity": 1
+    }
+  ]
+}
+
+### Post (ترحيل): TRANSFER_OUT -24 in Maadi (218 -> 194), TRANSFER_IN +24 in Nasr City at 10.6818; totalCost 256.36
+# @name w3transferPost
+POST {{baseUrl}}/stock-transfers/{{w3transfer.response.body.$.data.id}}/post
+Authorization: Bearer {{w2token}}
+
+### Post again -> 409 INVALID_STATUS
+POST {{baseUrl}}/stock-transfers/{{w3transfer.response.body.$.data.id}}/post
+Authorization: Bearer {{w2token}}
+
+### Item card Maadi: ... TRANSFER_OUT -24 -> 194 @ 10.6818
+GET {{baseUrl}}/stock-movements/item-card?productId={{w2brush.response.body.$.data.id}}&warehouseId={{w2warehouse.response.body.$.data.id}}
+Authorization: Bearer {{w2token}}
+
+### Item card Nasr City: TRANSFER_IN +24 -> 24 @ 10.6818
+GET {{baseUrl}}/stock-movements/item-card?productId={{w2brush.response.body.$.data.id}}&warehouseId={{w3nasr.response.body.$.data.id}}
+Authorization: Bearer {{w2token}}
+
+### One transfer (lines + both warehouses with their branch)
+GET {{baseUrl}}/stock-transfers/{{w3transfer.response.body.$.data.id}}
+Authorization: Bearer {{w2token}}
+
+### List (paginated; filters fromWarehouseId, toWarehouseId, status, dateFrom, dateTo, search = code / notes)
+GET {{baseUrl}}/stock-transfers?status=POSTED&search=ST-2026&page=1&pageSize=20
+Authorization: Bearer {{w2token}}
+
+### Nasr City sells 1 carton (12 of its 24 brushes)
+# @name w3nasrSale
+POST {{baseUrl}}/sales-invoices
+Content-Type: application/json
+Authorization: Bearer {{w2token}}
+
+{
+  "invoiceDate": "2026-11-29",
+  "paymentType": "CASH",
+  "customerId": "{{w3customer.response.body.$.data.id}}",
+  "branchId": "{{w3nasrBranch.response.body.$.data.id}}",
+  "warehouseId": "{{w3nasr.response.body.$.data.id}}",
+  "lines": [
+    {
+      "productId": "{{w2brush.response.body.$.data.id}}",
+      "itemUnitId": "{{w2carton.response.body.$.data.id}}",
+      "quantity": 1,
+      "unitPrice": 180
+    }
+  ]
+}
+
+### Post the sale -> Nasr City 12
+POST {{baseUrl}}/sales-invoices/{{w3nasrSale.response.body.$.data.id}}/post
+Authorization: Bearer {{w2token}}
+
+### Cancel the transfer now -> 400 INSUFFICIENT_STOCK, field lines.0.quantity ("available 12, requested 24"); nothing changes
+POST {{baseUrl}}/stock-transfers/{{w3transfer.response.body.$.data.id}}/cancel
+Authorization: Bearer {{w2token}}
+
+### Cancel the sale -> Nasr City back to 24
+POST {{baseUrl}}/sales-invoices/{{w3nasrSale.response.body.$.data.id}}/cancel
+Authorization: Bearer {{w2token}}
+
+### Cancel the transfer (إلغاء): TRANSFER_IN_CANCEL -24 in Nasr City (0), TRANSFER_OUT_CANCEL +24 in Maadi at 10.6818 (218)
+# @name w3transferCancel
+POST {{baseUrl}}/stock-transfers/{{w3transfer.response.body.$.data.id}}/cancel
+Authorization: Bearer {{w2token}}
+
+### Item card Nasr City after the cancel: TRANSFER_IN +24, SALE -12, SALE_CANCEL +12, TRANSFER_IN_CANCEL -24 -> 0
+GET {{baseUrl}}/stock-movements/item-card?productId={{w2brush.response.body.$.data.id}}&warehouseId={{w3nasr.response.body.$.data.id}}
+Authorization: Bearer {{w2token}}

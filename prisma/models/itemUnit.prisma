@@ -10,6 +10,7 @@ model ItemUnit {
   salesQuotationLines    SalesQuotationLine[]
   salesInvoiceLines      SalesInvoiceLine[]
   salesReturnLines       SalesReturnLine[]
+  stockTransferLines     StockTransferLine[]
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @default(now()) @updatedAt
   deletedAt              DateTime?

@@ -1,0 +1,271 @@
+Stock Transfers API Documentation (التحويلات المخزنية)
+=====================================================
+
+Base URL
+--------
+http://localhost:3000   (the backend runs on your machine with Docker, see README.md)
+
+Authentication & access
+-----------------------
+All endpoints require:  Authorization: Bearer <access_token>   (see doc/week1/auth.txt)
+Only SUPERADMIN can call them:
+  - no / invalid token  -> 401 { "statusCode": 401, "message": "Unauthorized", "error": "Unauthorized", "code": "UNAUTHORIZED", "field": null }
+  - other roles         -> 403 { "statusCode": 403, "message": "You do not have the required roles to access this resource", "error": "Forbidden", "code": "FORBIDDEN", "field": null }
+
+Response shape: every success is { "message": "...", "data": ... }
+Every error has { statusCode, message, error, code, field } (see doc/week1/00-overview.txt)
+Unknown fields (also inside lines) -> 400 "property <name> should not exist"
+Numbers are SENT as numbers and RETURNED as strings. Dates are SENT as
+"YYYY-MM-DD" and RETURNED as "YYYY-MM-DDT00:00:00.000Z".
+
+What is it?
+-----------
+Goods moved from one warehouse to another (نقل بضاعة من مخزن لمخزن), in the
+same branch or between two branches. No customer, no supplier, no prices.
+
+ONE step (Week 3 decision 1): POSTING takes the goods out of the source
+warehouse (من مخزن) and puts them into the destination (إلى مخزن) in the
+same transaction. There is no "in transit" state: after the post, the
+destination already has the goods.
+
+  Status (الحالة):
+      DRAFT (مسودة) --post--> POSTED (مُرحّل) --cancel--> CANCELLED (ملغي)
+  - DRAFT: no effect. Can be edited and deleted.
+  - POSTED: final. Can NOT be edited or deleted, only cancelled.
+  - CANCELLED: the goods went back to the source. The transfer stays (read only).
+  Any other action -> 409 INVALID_STATUS.
+
+Rules
+-----
+  - fromWarehouseId and toWarehouseId: two active warehouses, NOT the same one.
+  - Lines: STOCK products only (a SERVICE product has no stock -> 400), in
+    the primary unit or one of the product's units (carton = 12). No prices.
+  - The cost is set by the server when you POST: every piece moves at the
+    SOURCE warehouse's average cost at that moment:
+        unitCost  = the source average (per piece, saved on the line)
+        totalCost = sum of baseQuantity x unitCost (2 decimals per line)
+    The destination's average is recomputed with that cost (the same formula
+    as a purchase: (oldQty x oldAvg + qty x unitCost) / (oldQty + qty)).
+  - CANCEL puts the pieces back into the source at the SAME unitCost they left
+    with (rule 5 of Week 3), and takes them out of the destination at the
+    destination's current average. If the destination already sold / moved
+    them -> 400 INSUFFICIENT_STOCK and nothing changes.
+  - Posting / cancelling is all or nothing: if one line fails, nothing moves.
+
+The brush example (Week 3 story)
+--------------------------------
+  Maadi (مخزن المعادي, فرع المعادي): brushes at an average of 10.6818.
+  Nasr City (مخزن مدينة نصر, فرع مدينة نصر): no brushes.
+  Transfer 2 cartons Maadi -> Nasr City -> ST-2026-000001 (DRAFT, no change)
+  POST -> 24 brushes leave Maadi at 10.6818 and enter Nasr City at 10.6818:
+     line unitCost 10.6818, totalCost 256.36 (24 x 10.6818)
+     Maadi -24 (in the story 170 -> 146; in requests.http 218 -> 194), Nasr City 0 -> 24
+  The same warehouse in "from" and "to" -> 400 (field toWarehouseId)
+  A SERVICE product -> 400 (field lines.0.productId)
+  CANCEL -> Nasr City 24 -> 0, Maadi +24 at 10.6818 (back to where it was)
+  CANCEL after Nasr City sold 1 carton (12 left) -> 400 INSUFFICIENT_STOCK
+
+  Item card of Maadi (GET /stock-movements/item-card?productId=<brush>&warehouseId=<Maadi>):
+     type                 quantity  unitCost  totalCost  balanceAfter  avgCostAfter  sourceCode
+     TRANSFER_OUT         -24       10.6818   -256.36    194           10.6818       ST-2026-000001
+     TRANSFER_OUT_CANCEL  +24       10.6818   256.36     218           10.6818       ST-2026-000001  (after cancel)
+  Item card of Nasr City:
+     type                 quantity  unitCost  totalCost  balanceAfter  avgCostAfter  sourceCode
+     TRANSFER_IN          +24       10.6818   256.36     24            10.6818       ST-2026-000001
+     TRANSFER_IN_CANCEL   -24       10.6818   -256.36    0             10.6818       ST-2026-000001  (after cancel)
+  Both movements of a line have sourceType "ST", sourceId = the transfer and
+  sourceLineId = the line. Labels: TRANSFER_OUT = تحويل صادر,
+  TRANSFER_IN = تحويل وارد, TRANSFER_OUT_CANCEL = إلغاء تحويل صادر,
+  TRANSFER_IN_CANCEL = إلغاء تحويل وارد.
+
+Header fields (Arabic label = what the screen shows)
+----------------------------------------------------
+  field            Arabic          who               notes
+  ---------------  --------------  ----------------  ----------------------------------------
+  id               -               server
+  code             رقم التحويل      server            ST-2026-000001 (year = transferDate's year)
+  transferDate     تاريخ التحويل    user              "2026-11-29" (required)
+  status           الحالة           server            DRAFT / POSTED / CANCELLED
+  fromWarehouseId  من مخزن          user              an active warehouse (GET /inventory)
+  toWarehouseId    إلى مخزن         user              an active warehouse, NOT the same; any branch
+  totalCost        قيمة التحويل     server            set by POST (0 while DRAFT)
+  postedDate / postedBy        تاريخ الترحيل / رحّله   server
+  cancelledDate / cancelledBy  تاريخ الإلغاء / ألغاه   server
+  notes            ملاحظات          user, optional    max 500; null clears
+  createdBy / createdDate / modifiedBy / modifiedDate        server
+
+Line fields (البنود)
+-------------------
+  field         Arabic           who               notes
+  ------------  ---------------  ----------------  ------------------------------------------
+  productId     الصنف             user              an active STOCK product
+  itemUnitId    الوحدة            user              the primary unit or one of the product's units
+  unitFactor    معامل الوحدة       server            pieces in one itemUnitId (carton = 12)
+  quantity      الكمية            user              in itemUnitId (2 cartons); > 0, max 4 decimals
+  baseQuantity  الكمية بالقطعة     server            quantity x unitFactor (24)
+  unitCost      تكلفة القطعة       server            the source average when posted (10.6818), 0 before
+  notes         ملاحظات           user, optional    max 250
+
+Transfer object (create / update / get one / post / cancel) - real POSTED example
+--------------------------------------------------------------------------------
+{
+  "id": "cmwyz7ye700d9gxijyopaso98",
+  "code": "ST-2026-000001",
+  "transferDate": "2026-11-29T00:00:00.000Z",
+  "status": "POSTED",
+  "fromWarehouseId": "cmwyz7xut00bigxijfnvrt9qu",
+  "toWarehouseId": "cmwyz7ydy00d7gxiju0qfpu8p",
+  "totalCost": "256.36",
+  "postedDate": "2026-11-27T12:47:32.597Z",
+  "postedBy": "c7836dcb-5485-43c9-a3c8-d234796bc540",
+  "cancelledDate": null,
+  "cancelledBy": null,
+  "notes": "تحويل لفرع مدينة نصر",
+  "createdBy": "c7836dcb-5485-43c9-a3c8-d234796bc540",
+  "createdDate": "2026-11-27T12:47:32.575Z",
+  "modifiedBy": null,
+  "modifiedDate": "2026-11-27T12:47:32.608Z",
+  "deletedAt": null,
+  "fromWarehouse": { "id": "cmwyz7xut00bigxijfnvrt9qu", "name": "مخزن المعادي", "branch": { "id": "cmwyz7xun00bhgxijp8v5b4vk", "code": "branch-607722", "name": "فرع المعادي" } },
+  "toWarehouse": { "id": "cmwyz7ydy00d7gxiju0qfpu8p", "name": "مخزن مدينة نصر", "branch": { "id": "cmwyz7ydt00d6gxij6lmx4pyb", "code": "branch-429978", "name": "فرع مدينة نصر" } },
+  "createdByUser": { "id": "c7836dcb-5485-43c9-a3c8-d234796bc540", "username": "admin" },
+  "modifiedByUser": null,
+  "postedByUser": { "id": "c7836dcb-5485-43c9-a3c8-d234796bc540", "username": "admin" },
+  "cancelledByUser": null,
+  "lines": [
+    {
+      "id": "cmwyz7ye800dagxijq2vzdtkc",
+      "stockTransferId": "cmwyz7ye700d9gxijyopaso98",
+      "productId": "cmwyz7xvj00bmgxijol73kzc1",
+      "itemUnitId": "cmwyz7xvc00blgxijmrly3g1s",
+      "unitFactor": "12",
+      "quantity": "2",
+      "baseQuantity": "24",
+      "unitCost": "10.6818",
+      "notes": null,
+      "product": { "id": "cmwyz7xvj00bmgxijol73kzc1", "code": "PRD-327895", "name": "فرشة", "itemType": "STOCK" },
+      "itemUnit": { "id": "cmwyz7xvc00blgxijmrly3g1s", "code": "unit-582082", "name": "كرتونة" }
+    }
+  ]
+}
+The same transfer right after create (DRAFT): status "DRAFT", postedDate /
+postedBy null, totalCost "0", unitCost "0".
+
+---------------------------------------------------------
+STOCK TRANSFER APIs
+---------------------------------------------------------
+
+1) Create (DRAFT)
+   Method: POST
+   URL: /stock-transfers
+
+   Request Example (2 cartons Maadi -> Nasr City):
+   {
+     "transferDate": "2026-11-29",
+     "fromWarehouseId": "cmwyz7xut00bigxijfnvrt9qu",
+     "toWarehouseId": "cmwyz7ydy00d7gxiju0qfpu8p",
+     "notes": "تحويل لفرع مدينة نصر",
+     "lines": [
+       { "productId": "cmwyz7xvj00bmgxijol73kzc1", "itemUnitId": "cmwyz7xvc00blgxijmrly3g1s", "quantity": 2 }
+     ]
+   }
+
+   Response (201): { "message": "Stock transfer created successfully", "data": { ...transfer object, "status": "DRAFT", "totalCost": "0" } }
+   No stock change (the stock is checked when you POST).
+
+   Error Responses:
+   - 400 the same warehouse in "from" and "to"
+     { "statusCode": 400, "message": "toWarehouseId must be different from fromWarehouseId", "error": "Bad Request", "code": "BAD_REQUEST", "field": "toWarehouseId" }
+   - 400 a warehouse missing or deleted
+     { "statusCode": 400, "message": "fromWarehouseId does not exist", "error": "Bad Request", "code": "DOES_NOT_EXIST", "field": "fromWarehouseId" }
+     ("toWarehouseId does not exist", field "toWarehouseId")
+   - 400 a SERVICE product (N = line index, starting at 0)
+     { "statusCode": 400, "message": "Service items (SERVICE) have no stock", "error": "Bad Request", "code": "BAD_REQUEST", "field": "lines.0.productId" }
+   - 400 a line's product missing or deleted
+     { "statusCode": 400, "message": "productId does not exist", "error": "Bad Request", "code": "DOES_NOT_EXIST", "field": "lines.1.productId" }
+   - 400 a line's unit is not one of the product's units
+     { "statusCode": 400, "message": "unit is not defined for this product", "error": "Bad Request", "code": "BAD_REQUEST", "field": "lines.0.itemUnitId" }
+   - 400 no lines / bad quantity
+     { "statusCode": 400, "message": ["lines must contain at least 1 elements"], "error": "Bad Request", "code": "VALIDATION_FAILED", "field": "lines" }
+     { "statusCode": 400, "message": ["lines.0.quantity must be a positive number"], "error": "Bad Request", "code": "VALIDATION_FAILED", "field": "lines.0.quantity" }
+   - 400 sending a cost / price / total / code / status, e.g.
+     { "statusCode": 400, "message": ["lines.0.property unitCost should not exist"], "error": "Bad Request", "code": "VALIDATION_FAILED", "field": "lines.0.unitCost" }
+
+2) List
+   Method: GET
+   URL: /stock-transfers
+   Description: PAGINATED, newest transferDate first. Each item = header +
+                fromWarehouse / toWarehouse ({ id, name, branch }) +
+                "_count": { "lines": N }. NO lines (open one transfer to see them).
+   Query (all optional): fromWarehouseId, toWarehouseId, status (DRAFT /
+   POSTED / CANCELLED), dateFrom, dateTo (transferDate, inclusive), search
+   (part of the code or the notes; any case), page, pageSize.
+   Response (200):
+   { "message": "Stock transfers returned successfully", "data": { "items": [ ... ], "meta": { "page": 1, "pageSize": 20, "total": 1, "totalPages": 1 } } }
+
+3) Get one
+   Method: GET
+   URL: /stock-transfers/:id
+   Response (200): { "message": "Stock transfer returned successfully", "data": { ...transfer object } }
+   Error (404): { "statusCode": 404, "message": "Stock transfer with id xxx not found", "error": "Not Found", "code": "NOT_FOUND", "field": null }
+
+4) Update (DRAFT only)
+   Method: PATCH
+   URL: /stock-transfers/:id
+   Description: Any field from Create, all optional; merged with what is
+                saved and checked again like a create. "lines", when sent,
+                REPLACES ALL the lines. null clears notes; null on other
+                fields -> 400.
+   Request Example: { "lines": [ { "productId": "...", "itemUnitId": "...", "quantity": 3 } ] }
+   Response (200): { "message": "Stock transfer updated successfully", "data": { ...transfer object } }
+   Errors: the same 400s as Create, and
+   { "statusCode": 409, "message": "This transfer is POSTED: only a DRAFT transfer can be edited", "error": "Conflict", "code": "INVALID_STATUS", "field": "status" }
+
+5) Delete (DRAFT only)
+   Method: DELETE
+   URL: /stock-transfers/:id
+   Response (200): { "message": "Stock transfer deleted successfully", "data": null }
+   Error (409):
+   { "statusCode": 409, "message": "Only a DRAFT transfer can be deleted (cancel a POSTED transfer instead)", "error": "Conflict", "code": "INVALID_STATUS", "field": "status" }
+
+6) Post (ترحيل) - out of "from" AND into "to", in one step
+   Method: POST
+   URL: /stock-transfers/:id/post
+   Body: none
+   Description: DRAFT -> POSTED. For every line: baseQuantity pieces leave
+                the source at its CURRENT average (TRANSFER_OUT) and enter
+                the destination at that same cost (TRANSFER_IN). Saves the
+                line's unitCost and the header totalCost. All or nothing;
+                pressing it twice can't post twice.
+   Response (201): { "message": "Stock transfer posted successfully", "data": { ...transfer object, "status": "POSTED", "totalCost": "256.36" } }
+   Errors:
+   - 409 not DRAFT
+     { "statusCode": 409, "message": "This transfer is POSTED: only a DRAFT transfer can be posted", "error": "Conflict", "code": "INVALID_STATUS", "field": "status" }
+   - 400 not enough stock in the source (the transfer stays DRAFT, nothing moves)
+     { "statusCode": 400, "message": "Insufficient stock: available 5, requested 6", "error": "Bad Request", "code": "INSUFFICIENT_STOCK", "field": "lines.1.quantity" }
+   - 400 a warehouse / product was deleted (or a product became SERVICE) after the draft was saved
+     { "statusCode": 400, "message": "toWarehouseId does not exist", "error": "Bad Request", "code": "DOES_NOT_EXIST", "field": "toWarehouseId" }
+
+7) Cancel (إلغاء) - the goods go back
+   Method: POST
+   URL: /stock-transfers/:id/cancel
+   Body: none
+   Description: POSTED -> CANCELLED. For every line: the pieces leave the
+                destination (TRANSFER_IN_CANCEL) and come back into the source
+                at the SAME unitCost they left with (TRANSFER_OUT_CANCEL).
+                unitCost and totalCost stay as they were.
+   Response (201): { "message": "Stock transfer cancelled successfully", "data": { ...transfer object, "status": "CANCELLED" } }
+   Errors:
+   - 409 not POSTED
+     { "statusCode": 409, "message": "This transfer is CANCELLED: only a POSTED transfer can be cancelled", "error": "Conflict", "code": "INVALID_STATUS", "field": "status" }
+   - 400 the destination no longer has the pieces (sold / moved; nothing changes)
+     { "statusCode": 400, "message": "Insufficient stock: available 12, requested 24", "error": "Bad Request", "code": "INSUFFICIENT_STOCK", "field": "lines.0.quantity" }
+
+Suggested Arabic messages
+-------------------------
+  INVALID_STATUS                            لا يمكن تنفيذ العملية في حالة المستند الحالية
+  BAD_REQUEST + toWarehouseId               المخزن المحوَّل إليه يجب أن يكون مختلفًا عن المخزن المحوَّل منه
+  DOES_NOT_EXIST + fromWarehouseId / toWarehouseId   المخزن غير موجود أو محذوف
+  BAD_REQUEST + lines.N.productId           لا يمكن تحويل صنف خدمي (ليس له مخزون)
+  BAD_REQUEST + lines.N.itemUnitId          هذه الوحدة غير معرفة لهذا الصنف
+  INSUFFICIENT_STOCK + lines.N.quantity     الكمية المتاحة غير كافية (عند الترحيل: في المخزن المحوَّل منه؛ عند الإلغاء: في المخزن المحوَّل إليه)

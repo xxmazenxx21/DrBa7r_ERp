@@ -15,4 +15,6 @@ model Inventory {
   salesInvoices      SalesInvoice[]
   salesReturns       SalesReturn[]
   purchaseReturns    PurchaseReturn[]
+  transfersOut       StockTransfer[]     @relation("TransfersOut")
+  transfersIn        StockTransfer[]     @relation("TransfersIn")
 }
