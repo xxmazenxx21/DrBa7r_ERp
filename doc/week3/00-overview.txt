@@ -1,0 +1,95 @@
+ERP API - Week 3 Overview (Sales + stock control)
+=================================================
+
+>>> Frontend: read doc/FRONTEND_WEEK3_READ_FIRST.txt first (everything new or
+>>> changed in Week 3, updated with every task), then this file.
+
+Week 3 adds SALES (المبيعات) and STOCK CONTROL between warehouses:
+sales quotations, sales invoices, sales returns, stock transfers and stock
+counts. They mirror the Week 2 purchase documents, but the stock goes the
+other way. Everything in doc/week1/00-overview.txt and doc/week2/00-overview.txt
+still applies (login, SUPERADMIN only, { message, data }, errors with
+"code" + "field", soft delete, pagination, the server computes totals).
+
+Base URL
+--------
+http://localhost:3000   (the backend runs on your machine with Docker, see README.md)
+
+
+The Week 3 story
+----------------
+The Maadi warehouse (مخزن المعادي) starts with 218 brushes at 10.6818 (the end
+of Week 2). We sell 5 cartons to "صيدلية الشفاء" on credit, the customer
+returns 1 carton, we transfer 2 cartons to the Nasr City warehouse (مخزن مدينة
+نصر), and a stock count finds 1 brush missing in Maadi:
+
+    Maadi:     218 - 60 + 12 - 24 - 1 = 145
+    Nasr City:   0 + 24              =  24
+
+  Sales Quotation      -->  Sales Invoice          -->  Sales Return
+  عرض سعر بيع               فاتورة بيع                  مرتجع بيع
+  no effect                 post: stock goes DOWN       post: stock goes UP
+
+  Stock Transfer (تحويل مخزني)            Stock Count (جرد)
+  takes out of one warehouse and          adjusts the stock to what was
+  puts into the other                     counted (a movement for the difference)
+
+
+The 6 decisions (taken; they don't change without asking the owner)
+--------------------------------------------------------------------
+  1. Transfer between warehouses: ONE step. Posting takes the goods out of the
+     first warehouse and puts them into the second in the same transaction.
+     There is no "in transit" state.
+  2. Sales return: MUST be linked to a POSTED sales invoice (salesInvoiceId is
+     required). The goods come back into stock at the original sale cost.
+  3. Stock count: DRAFT -> POSTED only. No cancel: a mistake is fixed with a
+     new count.
+  4. Sales price: the user sends unitPrice; the frontend suggests it from the
+     product. No price level per customer.
+  5. Selling below cost: allowed, with no warning.
+  6. Credit limit (creditLimit): NOT applied until Week 4.
+
+
+The 5 rules of the week
+-----------------------
+  1. Stock is always counted in pieces (the primary unit). Lines are converted
+     with the unit factor (carton = 12).
+  2. Only the server's stock service writes stock (ProductInventory) and
+     stock movements (StockMovement).
+  3. The server computes all totals. The frontend sends quantities, prices
+     and percents only.
+  4. A POSTED document is never edited or deleted; it is cancelled with an
+     opposite movement. Exception: a stock count has no cancel.
+  5. NEW: the cost of a sale never comes from the user. It comes from the
+     stock at the moment the goods leave (the average cost then) and is saved
+     on the line (stockUnitCost). Anything that comes back into stock
+     (invoice cancel, sales return, transfer cancel) comes back at the SAME
+     cost it left with.
+
+
+Modules (task number = the order they are built in)
+---------------------------------------------------
+  task  module                         what it does                                    migration
+  ----  -----------------------------  ----------------------------------------------  ----------------
+  1     (setup, no module)             new enum values, stock adjust with a source,    week3_enums
+                                       shared currency rule, these docs
+  2     sales-quotations               CRUD + statuses (without convert)               sales_quotations
+        عروض أسعار البيع
+  3     sales-invoices  فواتير البيع     CRUD + post + cancel + returnable + cost        sales_invoices
+  4     convert quotation -> invoice   convert-to-invoice                              -
+        تحويل العرض لفاتورة
+  5     sales-returns  مرتجعات البيع     linked to an invoice + post + cancel            sales_returns
+  6     stock-transfers  التحويلات       warehouse to warehouse + post + cancel          stock_transfers
+  7     stock-counts  الجرد              open a count + enter counts + post              stock_counts
+  8     docs + the big test            week3flow.txt + requests.http W3-0 ... W3-22    -
+
+  Done so far: Task 1.
+  New document numbers (one counter per type per year):
+    SQ-2026-000001 (sales quotation), SI- (sales invoice), SR- (sales return),
+    ST- (stock transfer), SC- (stock count).
+
+
+Files in this folder
+--------------------
+  00-overview.txt   this file
+  (one file per module is added with each task)

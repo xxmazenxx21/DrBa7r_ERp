@@ -49,7 +49,8 @@ export interface StockInArgs extends StockMoveArgs {
 
 export type StockOutArgs = StockMoveArgs;
 
-export interface AdjustArgs {
+/** MovementSource (all optional): a stock count (SC) sets it; PATCH product-inventory doesn't. */
+export interface AdjustArgs extends MovementSource {
   productId: string;
   warehouseId: string;
   /** The quantity the warehouse must have now. Not sent = unchanged. */
@@ -328,6 +329,7 @@ export class StockService {
           avgCostAfter: newCost,
           reason,
           createdBy: args.userId,
+          ...this.source(args),
         })
       : null;
     return { balance, movement };

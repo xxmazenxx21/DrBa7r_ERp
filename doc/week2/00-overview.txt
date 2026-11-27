@@ -1,8 +1,8 @@
 ERP API - Week 2 Overview
 =========================
 
->>> Frontend: read doc/FRONTEND_WEEK2_READ_FIRST.txt first (everything new or
->>> changed in Week 2, updated with every task), then this file.
+>>> Frontend: read doc/week2/week2flow.txt first (the whole Week 2 flow in one
+>>> self-contained file), then this file and the module files.
 
 Week 2 adds purchasing: currencies, product units, stock movements, purchase
 quotations, purchase invoices and purchase returns. One .txt file per module

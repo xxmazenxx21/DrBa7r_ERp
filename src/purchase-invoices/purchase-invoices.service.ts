@@ -30,6 +30,7 @@ import {
   ResolvedLine,
   toDate,
 } from '../utils/document/document-lines';
+import { resolveCurrency } from '../utils/document/document-currency';
 import { CreatePurchaseInvoiceDto } from './dto/create-purchase-invoice.dto';
 import { UpdatePurchaseInvoiceDto } from './dto/update-purchase-invoice.dto';
 import { PurchaseInvoiceQueryDto } from './dto/purchase-invoice-query.dto';
@@ -181,52 +182,6 @@ export class PurchaseInvoicesService {
     });
   }
 
-  /**
-   * Currency + exchange rate:
-   *  - no currencyId -> the default currency, rate 1 (400 if there is none)
-   *  - the default currency -> rate 1 (another rate -> 400)
-   *  - another currency -> exchangeRate is required (> 0)
-   */
-  private async resolveCurrency(
-    currencyId: string | null | undefined,
-    exchangeRate: DecimalInput | null | undefined,
-  ): Promise<{ currencyId: string; exchangeRate: Prisma.Decimal }> {
-    const currency = currencyId
-      ? await assertExists(this.prisma.currency, 'currencyId', currencyId)
-      : await this.prisma.currency.findFirst({
-          where: { isDefault: true, deletedAt: null },
-        });
-    if (!currency) {
-      throw badRequest(
-        'There is no default currency: create one (POST /currency) or send currencyId',
-        ErrorCode.BAD_REQUEST,
-        'currencyId',
-      );
-    }
-    const rate =
-      exchangeRate === undefined || exchangeRate === null
-        ? null
-        : new Prisma.Decimal(exchangeRate);
-    if (currency.isDefault) {
-      if (rate && !rate.eq(1)) {
-        throw badRequest(
-          'exchangeRate must be 1 for the default currency',
-          ErrorCode.BAD_REQUEST,
-          'exchangeRate',
-        );
-      }
-      return { currencyId: currency.id, exchangeRate: ONE };
-    }
-    if (!rate) {
-      throw badRequest(
-        'exchangeRate is required for a currency that is not the default',
-        ErrorCode.BAD_REQUEST,
-        'exchangeRate',
-      );
-    }
-    return { currencyId: currency.id, exchangeRate: rate };
-  }
-
   /** 400 for a line without expiryDate whose product has hasExpiryDate. */
   private assertExpiryDates(
     lines: { expiryDate?: unknown }[],
@@ -316,7 +271,8 @@ export class PurchaseInvoicesService {
       input.branchId,
     );
     assertNotBefore(input.dueDate, input.invoiceDate, 'dueDate', 'invoiceDate');
-    const currency = await this.resolveCurrency(
+    const currency = await resolveCurrency(
+      this.prisma,
       input.currencyId,
       input.exchangeRate,
     );
@@ -544,7 +500,8 @@ export class PurchaseInvoicesService {
 
     const currency =
       dto.currencyId !== undefined || dto.exchangeRate !== undefined
-        ? await this.resolveCurrency(
+        ? await resolveCurrency(
+            this.prisma,
             dto.currencyId ?? current.currencyId,
             dto.exchangeRate !== undefined
               ? dto.exchangeRate
