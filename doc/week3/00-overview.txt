@@ -92,7 +92,9 @@ Modules (task number = the order they are built in)
   cost they left with, cancel = they go out again; a sales invoice with a
   POSTED return can't be cancelled), Task 6 (stock transfers: ONE step, post
   = out of one warehouse and into the other at the source average, cancel =
-  back at the same cost).
+  back at the same cost), Task 7 (stock counts: open -> the server makes one
+  line per product -> type the counts -> post = one ADJUSTMENT per
+  difference, against the balance at posting; NO cancel).
   New document numbers (one counter per type per year):
     SQ-2026-000001 (sales quotation), SI- (sales invoice), SR- (sales return),
     ST- (stock transfer), SC- (stock count).
@@ -105,4 +107,5 @@ Files in this folder
   sales-invoices.txt     /sales-invoices    (فواتير البيع: post = stock out + cost, cancel = stock back)
   sales-returns.txt      /sales-returns     (مرتجعات البيع: linked to an invoice, post = stock back at the sale cost)
   stock-transfers.txt    /stock-transfers   (التحويلات: warehouse -> warehouse in one step, at the source average)
+  stock-counts.txt       /stock-counts      (الجرد: open -> count -> post = adjustments; no cancel)
   (one file per module is added with each task)

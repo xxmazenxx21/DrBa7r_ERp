@@ -1,0 +1,239 @@
+Stock Counts API Documentation (الجرد)
+=====================================
+
+Base URL
+--------
+http://localhost:3000   (the backend runs on your machine with Docker, see README.md)
+
+Authentication & access
+-----------------------
+All endpoints require:  Authorization: Bearer <access_token>   (see doc/week1/auth.txt)
+Only SUPERADMIN can call them:
+  - no / invalid token  -> 401 { "statusCode": 401, "message": "Unauthorized", "error": "Unauthorized", "code": "UNAUTHORIZED", "field": null }
+  - other roles         -> 403 { "statusCode": 403, "message": "You do not have the required roles to access this resource", "error": "Forbidden", "code": "FORBIDDEN", "field": null }
+
+Response shape: every success is { "message": "...", "data": ... }
+Every error has { statusCode, message, error, code, field } (see doc/week1/00-overview.txt)
+Unknown fields (also inside lines) -> 400 "property <name> should not exist"
+Numbers are SENT as numbers and RETURNED as strings. Dates are SENT as
+"YYYY-MM-DD" and RETURNED as "YYYY-MM-DDT00:00:00.000Z".
+
+What is it?
+-----------
+Counting what is really on the shelves of ONE warehouse (جرد) and fixing the
+stock to it. Three steps:
+  1. OPEN (فتح جرد): POST /stock-counts { countDate, warehouseId }. The SERVER
+     makes the lines: one per product of the warehouse, with the quantity in
+     the system now (systemQuantity).
+  2. COUNT (إدخال العد): PATCH /stock-counts/:id/lines - type what you counted
+     (countedQuantity), as many times as you want, while it is DRAFT.
+  3. POST (ترحيل): every counted line becomes the stock: ONE ADJUSTMENT
+     movement (تسوية) per line for the difference. Lines you didn't count are
+     left alone.
+
+  Status (الحالة):  DRAFT (مسودة) --post--> POSTED (مُرحّل)
+  - There is NO cancel (Week 3 decision 3): a POSTED count is final. A mistake
+    is fixed with a NEW count. POST /stock-counts/:id/cancel does not exist (404).
+  - DRAFT: no effect on the stock; edit countDate / notes, type counts, delete.
+  - POSTED: read only.
+  Any other action -> 409 INVALID_STATUS.
+
+Rules
+-----
+  - Lines come from the warehouse's active stock rows (ProductInventory) of
+    active STOCK products, in product-code order. A warehouse with none ->
+    400 (field warehouseId). A product the warehouse never had is NOT added by
+    a count: add it with POST /product-inventory/inventory/:inventoryId
+    (OPENING balance).
+  - Quantities are in PIECES (the product's primary unit). No units, no prices.
+  - countedQuantity: >= 0, max 4 decimals; null = not counted (clears it).
+  - The difference is computed WHEN YOU POST, against the balance at that
+    moment - NOT against systemQuantity (that is only what the sheet showed
+    when it was opened):
+        difference = countedQuantity - balance at posting
+    So goods sold (or bought, transferred...) between opening and posting are
+    still handled right: what you counted becomes the stock.
+    Example: opened with systemQuantity 145; 12 are sold before posting
+    (balance 133); you count 133 -> difference 0, no movement (not -12).
+  - The cost does not change: the movement uses the current average, saved
+    on the line as unitCost. difference 0 -> no movement.
+  - Each movement: type ADJUSTMENT, reason "جرد SC-2026-000001",
+    sourceType "SC", sourceId = the count, sourceLineId = the line,
+    sourceCode = the count's code.
+
+The brush example (Week 3 story)
+--------------------------------
+  Maadi (مخزن المعادي): 146 brushes @ 10.6818 after the sale, the return and
+  the transfer.
+  OPEN -> SC-2026-000001, line فرشة: systemQuantity 146, countedQuantity null
+  POST now -> 400 ("Count at least one line before posting")
+  COUNT 145 -> PATCH /stock-counts/:id/lines
+  POST -> ADJUSTMENT -1 at 10.6818 (totalCost -10.68), Maadi 145;
+          the line: difference -1, unitCost 10.6818
+  POST /stock-counts/:id/cancel -> 404 (there is no cancel)
+
+  Item card of Maadi after the post:
+     type        quantity  unitCost  totalCost  balanceAfter  avgCostAfter  sourceCode      reason
+     ADJUSTMENT  -1        10.6818   -10.68     145           10.6818       SC-2026-000001  جرد SC-2026-000001
+  (ADJUSTMENT = تسوية; a count has no movement type of its own: show
+   "جرد" + sourceCode when sourceType is "SC".)
+
+Header fields (Arabic label = what the screen shows)
+----------------------------------------------------
+  field        Arabic          who               notes
+  -----------  --------------  ----------------  ----------------------------------------
+  id           -               server
+  code         رقم الجرد        server            SC-2026-000001 (year = countDate's year)
+  countDate    تاريخ الجرد      user              "2026-11-30" (required)
+  status       الحالة           server            DRAFT / POSTED (never CANCELLED)
+  warehouseId  المخزن           user              an active warehouse; can't change after opening
+  postedDate / postedBy  تاريخ الترحيل / رحّله      server
+  notes        ملاحظات          user, optional    max 500; null clears
+  createdBy / createdDate / modifiedBy / modifiedDate        server
+
+Line fields (البنود) - made by the server
+----------------------------------------
+  field            Arabic              who      notes
+  ---------------  ------------------  -------  ------------------------------------------
+  id               -                   server   send it back as lineId
+  productId        الصنف                server   product: { id, code, name }
+  systemQuantity   الكمية في السيستم     server   in pieces, when the count was opened (display only)
+  countedQuantity  الكمية الفعلية        user     in pieces; null = not counted yet
+  difference       الفرق                server   set by POST: counted - balance at posting (null if not counted)
+  unitCost         تكلفة القطعة          server   set by POST: the average at posting (null if not counted)
+
+Stock count object (create / update / lines / get one / post) - real POSTED example
+----------------------------------------------------------------------------------
+{
+  "id": "cmwyzqxjm005wz4ij2mce6dzt",
+  "code": "SC-2026-000001",
+  "countDate": "2026-11-30T00:00:00.000Z",
+  "status": "POSTED",
+  "warehouseId": "cmwyzqwce004oz4ijbrlz23xt",
+  "postedDate": "2026-11-27T13:02:18.090Z",
+  "postedBy": "01cf7348-325d-4d06-94cc-f7bc0160bab3",
+  "notes": null,
+  "createdBy": "01cf7348-325d-4d06-94cc-f7bc0160bab3",
+  "createdDate": "2026-11-27T13:02:17.938Z",
+  "modifiedBy": "01cf7348-325d-4d06-94cc-f7bc0160bab3",
+  "modifiedDate": "2026-11-27T13:02:18.090Z",
+  "deletedAt": null,
+  "warehouse": { "id": "cmwyzqwce004oz4ijbrlz23xt", "name": "مخزن المعادي", "branch": { "id": "cmwyzqwc1004nz4ijlunszyax", "code": "branch-344621", "name": "فرع المعادي" } },
+  "createdByUser": { "id": "01cf7348-325d-4d06-94cc-f7bc0160bab3", "username": "admin" },
+  "modifiedByUser": { "id": "01cf7348-325d-4d06-94cc-f7bc0160bab3", "username": "admin" },
+  "postedByUser": { "id": "01cf7348-325d-4d06-94cc-f7bc0160bab3", "username": "admin" },
+  "lines": [
+    {
+      "id": "cmwyzqxjp005xz4ijelh55hi4",
+      "stockCountId": "cmwyzqxjm005wz4ij2mce6dzt",
+      "productId": "cmwyzqwe0004sz4ijayxbmohe",
+      "systemQuantity": "146",
+      "countedQuantity": "145",
+      "difference": "-1",
+      "unitCost": "10.6818",
+      "product": { "id": "cmwyzqwe0004sz4ijayxbmohe", "code": "PRD-340098", "name": "فرشة" }
+    }
+  ]
+}
+Right after OPEN (DRAFT): status "DRAFT", postedDate / postedBy null, and each
+line countedQuantity / difference / unitCost null.
+
+---------------------------------------------------------
+STOCK COUNT APIs
+---------------------------------------------------------
+
+1) Open (create a DRAFT count)
+   Method: POST
+   URL: /stock-counts
+   Request Example: { "countDate": "2026-11-30", "warehouseId": "cmwyzqwce004oz4ijbrlz23xt", "notes": "جرد آخر الشهر" }
+   (No "lines": the server makes them; sending lines -> 400 "property lines should not exist".)
+   Response (201): { "message": "Stock count created successfully", "data": { ...stock count object, "status": "DRAFT" } }
+   No stock change.
+   Errors:
+   - 400 nothing to count in the warehouse
+     { "statusCode": 400, "message": "The warehouse has no products to count", "error": "Bad Request", "code": "BAD_REQUEST", "field": "warehouseId" }
+   - 400 warehouse missing or deleted
+     { "statusCode": 400, "message": "warehouseId does not exist", "error": "Bad Request", "code": "DOES_NOT_EXIST", "field": "warehouseId" }
+
+2) List
+   Method: GET
+   URL: /stock-counts
+   Description: PAGINATED, newest countDate first. Each item = header +
+                warehouse { id, name, branch } + "_count": { "lines": N }. NO lines.
+   Query (all optional): warehouseId, status (DRAFT / POSTED), dateFrom,
+   dateTo (countDate, inclusive), page, pageSize.
+   Response (200):
+   { "message": "Stock counts returned successfully", "data": { "items": [ ... ], "meta": { "page": 1, "pageSize": 20, "total": 1, "totalPages": 1 } } }
+
+3) Get one (the count sheet)
+   Method: GET
+   URL: /stock-counts/:id
+   Response (200): { "message": "Stock count returned successfully", "data": { ...stock count object } }
+   Lines are in product-code order.
+   Error (404): { "statusCode": 404, "message": "Stock count with id xxx not found", "error": "Not Found", "code": "NOT_FOUND", "field": null }
+
+4) Enter the counts (DRAFT only)
+   Method: PATCH
+   URL: /stock-counts/:id/lines
+   Description: Sets countedQuantity of the lines you send (in pieces); the
+                other lines keep their value. null = not counted (clears it).
+                All or nothing: if one lineId is wrong, nothing is saved.
+                No stock change (that happens on POST).
+   Request Example:
+   { "lines": [ { "lineId": "cmwyzqxjp005xz4ijelh55hi4", "countedQuantity": 145 } ] }
+   Response (200): { "message": "Stock count lines updated successfully", "data": { ...stock count object } }
+   Errors:
+   - 400 a lineId that is not a line of THIS count (N = index in your "lines")
+     { "statusCode": 400, "message": "lineId is not a line of this stock count", "error": "Bad Request", "code": "BAD_REQUEST", "field": "lines.0.lineId" }
+   - 400 negative / more than 4 decimals / countedQuantity missing (send a number or null)
+     { "statusCode": 400, "message": ["lines.0.countedQuantity must not be less than 0"], "error": "Bad Request", "code": "VALIDATION_FAILED", "field": "lines.0.countedQuantity" }
+   - 409 not DRAFT
+     { "statusCode": 409, "message": "This stock count is POSTED: only a DRAFT stock count can be counted", "error": "Conflict", "code": "INVALID_STATUS", "field": "status" }
+
+5) Update the header (DRAFT only)
+   Method: PATCH
+   URL: /stock-counts/:id
+   Description: countDate and / or notes only (null clears notes). The
+                warehouse can't change: sending warehouseId -> 400
+                "property warehouseId should not exist".
+   Request Example: { "notes": "جرد آخر الشهر - المعادي" }
+   Response (200): { "message": "Stock count updated successfully", "data": { ...stock count object } }
+   Error (409): { "statusCode": 409, "message": "This stock count is POSTED: only a DRAFT stock count can be edited", "error": "Conflict", "code": "INVALID_STATUS", "field": "status" }
+
+6) Delete (DRAFT only)
+   Method: DELETE
+   URL: /stock-counts/:id
+   Response (200): { "message": "Stock count deleted successfully", "data": null }
+   Error (409): { "statusCode": 409, "message": "Only a DRAFT stock count can be deleted (a POSTED count is final)", "error": "Conflict", "code": "INVALID_STATUS", "field": "status" }
+
+7) Post (ترحيل) - FINAL, there is no cancel
+   Method: POST
+   URL: /stock-counts/:id/post
+   Body: none
+   Description: DRAFT -> POSTED. Every counted line becomes the stock of its
+                product: ONE ADJUSTMENT movement for the difference against
+                the balance at this moment (none when the difference is 0).
+                Saves difference and unitCost on each counted line. All or
+                nothing; pressing it twice can't post twice.
+   Response (201): { "message": "Stock count posted successfully", "data": { ...stock count object, "status": "POSTED" } }
+   Errors:
+   - 400 no line counted (the count stays DRAFT)
+     { "statusCode": 400, "message": "Count at least one line before posting", "error": "Bad Request", "code": "BAD_REQUEST", "field": "lines" }
+   - 409 not DRAFT
+     { "statusCode": 409, "message": "This stock count is POSTED: only a DRAFT stock count can be posted", "error": "Conflict", "code": "INVALID_STATUS", "field": "status" }
+   - 400 the warehouse was deleted after opening
+     { "statusCode": 400, "message": "warehouseId does not exist", "error": "Bad Request", "code": "DOES_NOT_EXIST", "field": "warehouseId" }
+
+8) Cancel - does NOT exist
+   POST /stock-counts/:id/cancel ->
+   { "statusCode": 404, "message": "Cannot POST /stock-counts/<id>/cancel", "error": "Not Found", "code": "NOT_FOUND", "field": null }
+   A wrong count is fixed by opening a NEW count and posting the right numbers.
+
+Suggested Arabic messages
+-------------------------
+  INVALID_STATUS                       لا يمكن تنفيذ العملية في حالة الجرد الحالية (الجرد المُرحّل نهائي)
+  BAD_REQUEST + warehouseId (open)     لا توجد أصناف في هذا المخزن للجرد
+  DOES_NOT_EXIST + warehouseId         المخزن غير موجود أو محذوف
+  BAD_REQUEST + lines (post)           أدخل الكمية الفعلية لبند واحد على الأقل قبل الترحيل
+  BAD_REQUEST + lines.N.lineId         هذا البند ليس من بنود هذا الجرد
+  VALIDATION_FAILED + lines.N.countedQuantity   الكمية الفعلية يجب أن تكون صفر أو أكثر (4 أرقام عشرية بحد أقصى)

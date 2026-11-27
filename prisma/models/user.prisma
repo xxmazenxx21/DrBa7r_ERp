@@ -44,6 +44,9 @@ model User {
   modifiedStockTransfers  StockTransfer[]     @relation("ModifiedStockTransfers")
   postedStockTransfers    StockTransfer[]     @relation("PostedStockTransfers")
   cancelledStockTransfers StockTransfer[]     @relation("CancelledStockTransfers")
+  createdStockCounts      StockCount[]        @relation("CreatedStockCounts")
+  modifiedStockCounts     StockCount[]        @relation("ModifiedStockCounts")
+  postedStockCounts       StockCount[]        @relation("PostedStockCounts")
   stockMovements          StockMovement[]
   createdQuotations       PurchaseQuotation[] @relation("CreatedQuotations")
   modifiedQuotations      PurchaseQuotation[] @relation("ModifiedQuotations")

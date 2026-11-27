@@ -1168,3 +1168,107 @@ Authorization: Bearer {{w2token}}
 ### Item card Nasr City after the cancel: TRANSFER_IN +24, SALE -12, SALE_CANCEL +12, TRANSFER_IN_CANCEL -24 -> 0
 GET {{baseUrl}}/stock-movements/item-card?productId={{w2brush.response.body.$.data.id}}&warehouseId={{w3nasr.response.body.$.data.id}}
 Authorization: Bearer {{w2token}}
+
+### =====================================================================
+### WEEK 3 - STOCK COUNTS (samples, not the big test)
+### =====================================================================
+# Uses "WEEK 2 - THE BIG TEST" and the Week 3 sections above (run them first,
+# in order): Maadi has 218 brushes @ 10.6818. A stock count (جرد) goes
+# DRAFT -> POSTED only: there is NO cancel (a mistake is fixed with a new count).
+# Flow: open (the server makes the lines) -> type the counts -> post.
+
+### Open a count on Maadi -> SC-2026-000001 DRAFT; one line per product, brush systemQuantity 218
+# @name w3count
+POST {{baseUrl}}/stock-counts
+Content-Type: application/json
+Authorization: Bearer {{w2token}}
+
+{
+  "countDate": "2026-11-30",
+  "warehouseId": "{{w2warehouse.response.body.$.data.id}}",
+  "notes": "جرد آخر الشهر"
+}
+
+### An empty warehouse (no stock rows)
+# @name w3emptyWarehouse
+POST {{baseUrl}}/inventory/branch/{{w2branch.response.body.$.data.id}}
+Content-Type: application/json
+Authorization: Bearer {{w2token}}
+
+{
+  "name": "مخزن فاضي",
+  "address": "المعادي"
+}
+
+### Open a count on it -> 400 BAD_REQUEST, field warehouseId ("The warehouse has no products to count")
+POST {{baseUrl}}/stock-counts
+Content-Type: application/json
+Authorization: Bearer {{w2token}}
+
+{
+  "countDate": "2026-11-30",
+  "warehouseId": "{{w3emptyWarehouse.response.body.$.data.id}}"
+}
+
+### Post before counting anything -> 400 BAD_REQUEST, field lines ("Count at least one line before posting")
+POST {{baseUrl}}/stock-counts/{{w3count.response.body.$.data.id}}/post
+Authorization: Bearer {{w2token}}
+
+### Type the count (in pieces): 217 brushes on the shelf
+PATCH {{baseUrl}}/stock-counts/{{w3count.response.body.$.data.id}}/lines
+Content-Type: application/json
+Authorization: Bearer {{w2token}}
+
+{
+  "lines": [
+    {
+      "lineId": "{{w3count.response.body.$.data.lines[0].id}}",
+      "countedQuantity": 217
+    }
+  ]
+}
+
+### A line of another count / unknown id -> 400 BAD_REQUEST, field lines.0.lineId
+PATCH {{baseUrl}}/stock-counts/{{w3count.response.body.$.data.id}}/lines
+Content-Type: application/json
+Authorization: Bearer {{w2token}}
+
+{
+  "lines": [
+    { "lineId": "not-a-line", "countedQuantity": 1 }
+  ]
+}
+
+### Edit the header (countDate / notes only, DRAFT)
+PATCH {{baseUrl}}/stock-counts/{{w3count.response.body.$.data.id}}
+Content-Type: application/json
+Authorization: Bearer {{w2token}}
+
+{
+  "notes": "جرد آخر الشهر - المعادي"
+}
+
+### Post (ترحيل): ADJUSTMENT -1 (reason "جرد SC-2026-000001", sourceCode SC-2026-000001) -> Maadi 217; difference -1, unitCost 10.6818
+# @name w3countPost
+POST {{baseUrl}}/stock-counts/{{w3count.response.body.$.data.id}}/post
+Authorization: Bearer {{w2token}}
+
+### Post again -> 409 INVALID_STATUS
+POST {{baseUrl}}/stock-counts/{{w3count.response.body.$.data.id}}/post
+Authorization: Bearer {{w2token}}
+
+### There is no cancel -> 404 NOT_FOUND
+POST {{baseUrl}}/stock-counts/{{w3count.response.body.$.data.id}}/cancel
+Authorization: Bearer {{w2token}}
+
+### Item card Maadi: ... ADJUSTMENT -1 -> 217 @ 10.6818 (sourceType SC)
+GET {{baseUrl}}/stock-movements/item-card?productId={{w2brush.response.body.$.data.id}}&warehouseId={{w2warehouse.response.body.$.data.id}}
+Authorization: Bearer {{w2token}}
+
+### One stock count (lines + product { id, code, name })
+GET {{baseUrl}}/stock-counts/{{w3count.response.body.$.data.id}}
+Authorization: Bearer {{w2token}}
+
+### List (paginated; filters warehouseId, status, dateFrom, dateTo)
+GET {{baseUrl}}/stock-counts?status=POSTED&page=1&pageSize=20
+Authorization: Bearer {{w2token}}

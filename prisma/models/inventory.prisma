@@ -17,4 +17,5 @@ model Inventory {
   purchaseReturns    PurchaseReturn[]
   transfersOut       StockTransfer[]     @relation("TransfersOut")
   transfersIn        StockTransfer[]     @relation("TransfersIn")
+  stockCounts        StockCount[]
 }

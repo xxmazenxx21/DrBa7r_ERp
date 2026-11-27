@@ -38,6 +38,7 @@ model Product {
   salesInvoiceLines      SalesInvoiceLine[]
   salesReturnLines       SalesReturnLine[]
   stockTransferLines     StockTransferLine[]
+  stockCountLines        StockCountLine[]
 }
 
 model ProductInventory {

@@ -1,0 +1,46 @@
+// الجرد: count what is really on the shelves of ONE warehouse and fix the
+// stock to it. DRAFT -> POSTED only (Week 3 decision 3): there is NO cancel,
+// a mistake is fixed with a new count. The server makes the lines itself
+// (one per stock row of the warehouse); the user only types the counts.
+// POSTING writes one ADJUSTMENT movement per counted line with a difference
+// (StockService.adjust with sourceType SC).
+
+// الرأس
+model StockCount {
+  id             String           @id @default(cuid())
+  code           String           @unique // رقم الجرد: SC-2026-000001 (NumberingService)
+  countDate      DateTime         @db.Date // تاريخ الجرد
+  status         DocumentStatus   @default(DRAFT) // الحالة: DRAFT / POSTED only (never CANCELLED)
+  warehouseId    String // المخزن
+  warehouse      Inventory        @relation(fields: [warehouseId], references: [id])
+  postedDate     DateTime? // تاريخ الترحيل
+  postedBy       String? // رحّله
+  postedByUser   User?            @relation("PostedStockCounts", fields: [postedBy], references: [id])
+  notes          String?          @db.VarChar(500) // ملاحظات
+  createdBy      String // أنشأه (from the token)
+  createdByUser  User             @relation("CreatedStockCounts", fields: [createdBy], references: [id])
+  createdDate    DateTime         @default(now()) // تاريخ الإنشاء
+  modifiedBy     String? // عدّله
+  modifiedByUser User?            @relation("ModifiedStockCounts", fields: [modifiedBy], references: [id])
+  modifiedDate   DateTime?        @updatedAt // تاريخ التعديل
+  deletedAt      DateTime? // تاريخ المسح
+  lines          StockCountLine[]
+
+  @@index([warehouseId])
+  @@index([countDate])
+}
+
+// البنود: one per product of the warehouse, made by the server (in pieces)
+model StockCountLine {
+  id              String     @id @default(cuid())
+  stockCountId    String
+  stockCount      StockCount @relation(fields: [stockCountId], references: [id], onDelete: Cascade)
+  productId       String // الصنف
+  product         Product    @relation(fields: [productId], references: [id])
+  systemQuantity  Decimal    @db.Decimal(18, 4) // الكمية في السيستم: snapshot when the count was opened (display only)
+  countedQuantity Decimal?   @db.Decimal(18, 4) // الكمية الفعلية: null = not counted yet (not adjusted)
+  difference      Decimal?   @db.Decimal(18, 4) // الفرق: counted - balance AT POSTING (set on post)
+  unitCost        Decimal?   @db.Decimal(18, 4) // تكلفة القطعة: the average at posting
+
+  @@unique([stockCountId, productId])
+}

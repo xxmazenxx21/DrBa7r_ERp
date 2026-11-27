@@ -4,11 +4,11 @@ FRONTEND - READ THIS FIRST (Week 3 backend changes)
 >>> This file is updated with every Week 3 task. Check the "Last update" line
 >>> below after every pull.
 
-Last update: Week 3 Task 6 (stock transfers: PART 6).
+Last update: Week 3 Task 7 (stock counts: PART 7).
 Changes to screens you already built (Week 1 / Week 2): PART 0 - check it first.
 New endpoints: PART 2 (sales quotations), PART 3 (sales invoices),
 PART 4 (POST /sales-quotations/:id/convert-to-invoice), PART 5 (sales returns),
-PART 6 (stock transfers).
+PART 6 (stock transfers), PART 7 (stock counts).
 New enum values: PART 1.
 
 
@@ -404,3 +404,71 @@ Arabic labels (new keys)
                   unitCost = تكلفة القطعة, notes = ملاحظات
   Item card types: TRANSFER_OUT = تحويل صادر (-), TRANSFER_IN = تحويل وارد (+),
                    TRANSFER_OUT_CANCEL = إلغاء تحويل صادر (+), TRANSFER_IN_CANCEL = إلغاء تحويل وارد (-)
+
+
+=====================================================================
+PART 7 - STOCK COUNTS (الجرد)  - doc/week3/stock-counts.txt
+=====================================================================
+    POST   /stock-counts             open a count (DRAFT): the SERVER makes the lines
+    GET    /stock-counts             list (PAGINATED; filters warehouseId, status, dateFrom, dateTo)
+    GET    /stock-counts/:id         the count sheet: header + lines (product { id, code, name })
+    PATCH  /stock-counts/:id/lines   type the counts { lines: [{ lineId, countedQuantity }] } (DRAFT)
+    PATCH  /stock-counts/:id         countDate / notes only (DRAFT)
+    DELETE /stock-counts/:id         soft delete (DRAFT only)
+    POST   /stock-counts/:id/post    ترحيل: one ADJUSTMENT per difference - FINAL
+  There is NO cancel (POST /stock-counts/:id/cancel -> 404): a POSTED count
+  is final; a mistake is fixed with a new count. Statuses: DRAFT / POSTED only.
+
+  The count sheet screen (شاشة الجرد) - 3 steps:
+    1. Open (فتح جرد): pick countDate + warehouse (+ notes) ->
+       POST /stock-counts { "countDate": "2026-11-30", "warehouseId": "..." }.
+       Don't send lines: the response already has one line per product of the
+       warehouse (product-code order) with systemQuantity (الكمية في السيستم).
+    2. Count (إدخال العد): a table with columns
+         كود الصنف | الصنف | الكمية في السيستم | الكمية الفعلية (input) | الفرق
+       The user types الكمية الفعلية in PIECES (the primary unit); save with
+       PATCH /stock-counts/:id/lines (send only the changed lines; null =
+       empty the cell). Save as often as you want; nothing touches the stock.
+       While DRAFT you may show a preview difference = counted - systemQuantity,
+       but label it as a preview: the real difference is computed on post.
+    3. Post (ترحيل): confirm first ("الترحيل نهائي ولا يمكن إلغاؤه") ->
+       POST /stock-counts/:id/post. Then show the saved difference (الفرق) and
+       unitCost (تكلفة القطعة) per line, read only. Empty (uncounted) lines are
+       NOT changed.
+  The difference is against the balance AT POSTING (not systemQuantity): if
+  goods were sold between opening and posting, what you counted still
+  becomes the stock. A product the warehouse never had is not on the sheet:
+  add it with the opening balance (POST /product-inventory/inventory/:id).
+
+  Example (the brush): Maadi 146 -> open SC-2026-000001 (systemQuantity 146)
+  -> count 145 -> post -> item card ADJUSTMENT -1 at 10.6818, reason
+  "جرد SC-2026-000001", sourceType "SC", sourceCode "SC-2026-000001"; Maadi
+  145; the line has difference -1. In the item card, show "جرد" + sourceCode
+  when sourceType is "SC".
+
+  Errors (code + field -> suggested Arabic):
+    400 BAD_REQUEST, field "warehouseId": the warehouse has nothing to count
+      { "statusCode": 400, "message": "The warehouse has no products to count", "error": "Bad Request", "code": "BAD_REQUEST", "field": "warehouseId" }
+      Arabic: لا توجد أصناف في هذا المخزن للجرد
+    400 BAD_REQUEST, field "lines": post with no counted line
+      { "statusCode": 400, "message": "Count at least one line before posting", "error": "Bad Request", "code": "BAD_REQUEST", "field": "lines" }
+      Arabic: أدخل الكمية الفعلية لبند واحد على الأقل قبل الترحيل
+    400 BAD_REQUEST, field "lines.N.lineId": a line of another count
+      Arabic: هذا البند ليس من بنود هذا الجرد
+    400 VALIDATION_FAILED, field "lines.N.countedQuantity": negative / > 4 decimals / missing
+      Arabic: الكمية الفعلية يجب أن تكون صفر أو أكثر
+    409 INVALID_STATUS, field "status": the count is POSTED (no edit / count / delete / post)
+      Arabic: الجرد المُرحّل نهائي ولا يمكن تعديله
+
+  Buttons by status:
+    DRAFT مسودة      حفظ العد، تعديل، حذف، ترحيل   (PATCH /lines, PATCH, DELETE, POST /post)
+    POSTED مُرحّل     -                             read only (no cancel button)
+
+Arabic labels (new keys)
+  Stock count:  code = رقم الجرد, countDate = تاريخ الجرد, status = الحالة,
+                warehouseId = المخزن, notes = ملاحظات,
+                postedDate / postedBy = تاريخ الترحيل / رحّله
+  Count line:   productId = الصنف, systemQuantity = الكمية في السيستم,
+                countedQuantity = الكمية الفعلية, difference = الفرق,
+                unitCost = تكلفة القطعة
+  Item card:    ADJUSTMENT with sourceType "SC" = تسوية جرد (show sourceCode)
