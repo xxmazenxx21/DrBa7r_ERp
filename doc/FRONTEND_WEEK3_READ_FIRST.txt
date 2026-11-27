@@ -4,8 +4,9 @@ FRONTEND - READ THIS FIRST (Week 3 backend changes)
 >>> This file is updated with every Week 3 task. Check the "Last update" line
 >>> below after every pull.
 
-Last update: Week 3 Task 3 (sales invoices).
-New endpoints: PART 2 (sales quotations), PART 3 (sales invoices).
+Last update: Week 3 Task 4 (sales quotation convert-to-invoice).
+New endpoints: PART 2 (sales quotations), PART 3 (sales invoices),
+PART 4 (POST /sales-quotations/:id/convert-to-invoice).
 New enum values: PART 1. Changed: DELETE /customer/:id and DELETE /currency/:id (PART 3).
 
 
@@ -81,7 +82,7 @@ PART 2 - SALES QUOTATIONS (عروض أسعار البيع)  - doc/week3/sales-qu
   Example: 5 cartons x 180, discount 5%, tax 14% -> SQ-2026-000001,
   subTotal 900, discountValue 45, taxValue 119.70, netTotal 974.70.
   DRAFT -> ACCEPTED directly -> 409 INVALID_STATUS.
-  convert-to-invoice comes with Task 4 (after sales invoices).
+  Convert to invoice: see PART 4.
 
 Arabic labels (new keys)
   Sales quotation: code = رقم العرض, quotationDate = تاريخ العرض,
@@ -153,3 +154,50 @@ Arabic labels (new keys)
   Invoice line:   unitPrice = سعر البيع للوحدة, baseQuantity = الكمية بالقطعة,
                   stockUnitCost = تكلفة القطعة, lineCost = تكلفة البند
   DocumentStatus: DRAFT = مسودة, POSTED = مُرحّل, CANCELLED = ملغي
+
+
+=====================================================================
+PART 4 - CONVERT A SALES QUOTATION TO AN INVOICE (تحويل العرض لفاتورة)
+         doc/week3/sales-quotations.txt (API 7)
+=====================================================================
+    POST   /sales-quotations/:id/convert-to-invoice
+    Body:  { "paymentType": "CASH" | "CREDIT", "invoiceDate": "2026-11-27",
+             "warehouseId": "..." }   <- warehouseId only when the quotation has none
+  The same button as "تحويل لفاتورة" on purchase quotations. Show it only
+  when the quotation is ACCEPTED (مقبول). It opens a small dialog: payment
+  type, invoice date, and the warehouse (pre-filled from the quotation;
+  required when the quotation has none, only warehouses of the quotation's
+  branch).
+  Response 201: { "message": "Sales quotation converted to invoice successfully",
+                  "data": { "quotation": {...CONVERTED}, "invoice": {...DRAFT} } }
+  The invoice is a normal DRAFT sales invoice (customer, branch, lines,
+  discounts, tax and notes copied, default currency, rate 1, no dueDate).
+  NOTHING leaves the stock yet: open the invoice (data.invoice.id), edit it
+  if needed (dueDate, paidAmount...) and press Post.
+  Example: SQ-2026-000001 (ACCEPTED) -> CREDIT, 2026-11-27 ->
+  SI-2026-000001 DRAFT, netTotal 974.70, paidAmount 0, remainingAmount 974.70,
+  and the quotation is CONVERTED.
+
+  The links (show them as clickable "open" links):
+    GET /sales-quotations/:id -> "convertedToInvoiceId": "<invoice id>"      (الفاتورة الناتجة)
+    GET /sales-invoices/:id   -> "convertedFromQuotation": { "id", "code" }  (العرض الأصلي)
+                                 null for an invoice made directly
+  A CONVERTED quotation is read only: no edit, no status change, no delete
+  (409 INVALID_STATUS). Hide those buttons.
+
+  Errors (BEFORE: the route did not exist -> 404; AFTER):
+    409 INVALID_STATUS, field "status": the quotation is not ACCEPTED or was converted already
+      { "statusCode": 409, "message": "This quotation is CONVERTED: only an ACCEPTED quotation can be converted to an invoice", "error": "Conflict", "code": "INVALID_STATUS", "field": "status" }
+      Arabic: لا يمكن تحويل عرض السعر لفاتورة إلا إذا كان مقبولًا ولم يتم تحويله من قبل
+    400 VALIDATION_FAILED, field "warehouseId": the quotation has no warehouse and none was sent
+      { "statusCode": 400, "message": ["warehouseId is required: the quotation has no warehouse"], "error": "Bad Request", "code": "VALIDATION_FAILED", "field": "warehouseId" }
+      Arabic: اختر المخزن: عرض السعر ليس له مخزن
+    400 BAD_REQUEST, field "warehouseId": a warehouse of another branch
+      Arabic: المخزن يجب أن يكون تابعًا لنفس فرع العرض
+    400 DOES_NOT_EXIST, field "lines.N.productId": a product was deleted since the quotation
+      Arabic: الصنف في البند رقم N+1 لم يعد موجودًا
+      (the quotation stays ACCEPTED, and an ACCEPTED quotation can't be edited:
+       make a new quotation without that product, or a direct sales invoice)
+  Nothing is saved when a convert fails: the quotation stays ACCEPTED and no
+  SI number is used.
+

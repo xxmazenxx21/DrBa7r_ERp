@@ -30,7 +30,7 @@ supplierId and SQ numbers.
   - Status (الحالة) - QuotationStatus:
         DRAFT (مسودة) --> SENT (مُرسل) --> ACCEPTED (مقبول)
                                       \-> REJECTED (مرفوض)
-        ACCEPTED --> CONVERTED (تم التحويل لفاتورة)   (convert-to-invoice: Week 3 Task 4, not available yet)
+        ACCEPTED --> CONVERTED (تم التحويل لفاتورة)   (only via convert-to-invoice, API 7)
     Only these moves are allowed; anything else -> 409 INVALID_STATUS.
   - Edit: only while DRAFT or SENT. Delete: any status except CONVERTED.
   - Selling price: you send unitPrice (suggest the product's retailPrice /
@@ -60,7 +60,7 @@ Header fields (Arabic label = what the screen shows)
   taxPercent            نسبة الضريبة %    user     optional, 0-100 (e.g. 14)
   taxValue              قيمة الضريبة      server
   netTotal              الصافي            server
-  convertedToInvoiceId  الفاتورة الناتجة   server   set by convert-to-invoice (Task 4); null for now
+  convertedToInvoiceId  الفاتورة الناتجة   server   the sales invoice id, set by convert-to-invoice; null before
   notes                 ملاحظات           user     optional, max 500; null clears
   createdBy / createdDate      أنشأه / تاريخ الإنشاء   server (the logged-in user)
   modifiedBy / modifiedDate    عدّله / تاريخ التعديل   server
@@ -255,9 +255,102 @@ SALES QUOTATION APIs
    Response (200): { "message": "Sales quotation deleted successfully", "data": null }
    Error (409): { "statusCode": 409, "message": "A CONVERTED quotation can't be deleted", "error": "Conflict", "code": "INVALID_STATUS", "field": "status" }
 
-7) Convert to invoice
-   POST /sales-quotations/:id/convert-to-invoice - Week 3 Task 4 (after sales
-   invoices). Not available yet (404).
+7) Convert to invoice (تحويل لفاتورة)
+   Method: POST
+   URL: /sales-quotations/:id/convert-to-invoice
+   Description: An ACCEPTED quotation becomes a DRAFT sales invoice
+                (doc/week3/sales-invoices.txt) with the same customer, branch,
+                lines (product, unit, quantity, unitPrice, line discounts,
+                notes), header discount, tax and notes, in the DEFAULT currency
+                (exchangeRate 1), no dueDate. The quotation becomes CONVERTED
+                and convertedToInvoiceId points to the invoice; the invoice has
+                "convertedFromQuotation": { "id", "code" }. All or nothing: if
+                it fails, the quotation stays ACCEPTED, no invoice is made and
+                no SI number is used. Clicking twice can't make two invoices
+                (the second gets 409). NO stock effect: the invoice is a
+                normal DRAFT; edit it if needed (dueDate, paidAmount...) and
+                then POST it (that is when the goods leave the warehouse).
+
+   Body:
+   - paymentType: required, CASH (paidAmount = netTotal) or CREDIT (paidAmount 0)
+   - invoiceDate: required, "2026-11-27"
+   - warehouseId: optional; the quotation's warehouse is used if not sent;
+                  REQUIRED when the quotation has none. Must belong to the
+                  quotation's branch. null -> 400.
+   Anything else (currencyId, lines, discounts...) -> 400 "property X should not exist".
+
+   Request Example:
+   POST /sales-quotations/cmwyn2drr00102emp438n5v40/convert-to-invoice
+   { "paymentType": "CREDIT", "invoiceDate": "2026-11-27" }
+
+   Response Example (201) - real response (shortened: the two objects are the
+   full quotation object above and the full invoice object of sales-invoices.txt):
+   {
+     "message": "Sales quotation converted to invoice successfully",
+     "data": {
+       "quotation": {
+         "id": "cmwyn2drr00102emp438n5v40",
+         "code": "SQ-2026-000001",
+         "status": "CONVERTED",
+         "netTotal": "974.7",
+         "convertedToInvoiceId": "cmwyn2dug00132empr4yegd7y",
+         "modifiedBy": "1aa6879a-9814-4df0-b29f-e66fae89f6a6",
+         "modifiedByUser": { "id": "1aa6879a-9814-4df0-b29f-e66fae89f6a6", "username": "admin" },
+         ...the other quotation fields, customer, branch, warehouse, lines, "isExpired": false
+       },
+       "invoice": {
+         "id": "cmwyn2dug00132empr4yegd7y",
+         "code": "SI-2026-000001",
+         "invoiceDate": "2026-11-27T00:00:00.000Z",
+         "dueDate": null,
+         "status": "DRAFT",
+         "paymentType": "CREDIT",
+         "currencyId": "cmwyn2d7g00002empbnekajdb",
+         "exchangeRate": "1",
+         "subTotal": "900",
+         "discountPercent": "5",
+         "discountValue": "45",
+         "taxPercent": "14",
+         "taxValue": "119.7",
+         "netTotal": "974.7",
+         "paidAmount": "0",
+         "remainingAmount": "974.7",
+         "totalCost": "0",
+         "notes": "السعر شامل التوصيل",
+         "currency": { "id": "cmwyn2d7g00002empbnekajdb", "code": "EGP", "name": "جنيه مصري", "symbol": "ج.م" },
+         "convertedFromQuotation": { "id": "cmwyn2drr00102emp438n5v40", "code": "SQ-2026-000001" },
+         "lines": [ { "unitFactor": "12", "quantity": "5", "baseQuantity": "60", "unitPrice": "180",
+                      "lineTotal": "900", "stockUnitCost": "0", "lineCost": "0", ... } ],
+         "grossProfit": null,
+         ...the other invoice fields, customer, branch, warehouse, users
+       }
+     }
+   }
+
+   Errors:
+   - 409 not ACCEPTED (DRAFT, SENT, REJECTED, or converted already)
+     { "statusCode": 409, "message": "This quotation is CONVERTED: only an ACCEPTED quotation can be converted to an invoice", "error": "Conflict", "code": "INVALID_STATUS", "field": "status" }
+     (a DRAFT one: "This quotation is DRAFT: only an ACCEPTED quotation can be converted to an invoice")
+   - 404 quotation missing or deleted
+     { "statusCode": 404, "message": "Sales quotation with id xxx not found", "error": "Not Found", "code": "NOT_FOUND", "field": null }
+   - 400 no warehouse anywhere
+     { "statusCode": 400, "message": ["warehouseId is required: the quotation has no warehouse"], "error": "Bad Request", "code": "VALIDATION_FAILED", "field": "warehouseId" }
+   - 400 warehouse of another branch
+     { "statusCode": 400, "message": "warehouseId must belong to branchId", "error": "Bad Request", "code": "BAD_REQUEST", "field": "warehouseId" }
+   - 400 warehouse missing or deleted
+     { "statusCode": 400, "message": "warehouseId does not exist", "error": "Bad Request", "code": "DOES_NOT_EXIST", "field": "warehouseId" }
+   - 400 a line's product was deleted since the quotation (N = the line, from 0)
+     { "statusCode": 400, "message": "productId does not exist", "error": "Bad Request", "code": "DOES_NOT_EXIST", "field": "lines.1.productId" }
+   - 400 the customer / branch was deleted, a line's unit is no longer defined,
+     no default currency: same bodies as POST /sales-invoices
+   - 400 bad body
+     { "statusCode": 400, "message": ["paymentType must be one of the following values: CASH, CREDIT"], "error": "Bad Request", "code": "VALIDATION_FAILED", "field": "paymentType" }
+
+   After the convert:
+   - the quotation can't be edited (409) or deleted (409 "A CONVERTED quotation can't be deleted");
+   - GET /sales-quotations/:id has "status": "CONVERTED" and "convertedToInvoiceId";
+     open the invoice with GET /sales-invoices/<convertedToInvoiceId>;
+   - GET /sales-invoices/:id has "convertedFromQuotation": { "id", "code": "SQ-2026-000001" }.
 
 Suggested Arabic messages
 -------------------------
@@ -266,6 +359,8 @@ Suggested Arabic messages
   VALIDATION_FAILED + lines.N.discountValue   أدخل نسبة الخصم أو قيمة الخصم فقط، وليس الاثنين
   BAD_REQUEST + lines.N.itemUnitId            هذه الوحدة غير معرفة لهذا الصنف
   DOES_NOT_EXIST + customerId                 العميل غير موجود أو محذوف
+  DOES_NOT_EXIST + lines.N.productId          الصنف غير موجود أو محذوف
+  VALIDATION_FAILED + warehouseId (convert)   اختر المخزن: عرض السعر ليس له مخزن
   BAD_REQUEST + warehouseId                   المخزن يجب أن يكون تابعًا لنفس الفرع
   BAD_REQUEST + validUntil                    تاريخ الصلاحية يجب أن يكون بعد تاريخ العرض
   BAD_REQUEST + discountValue                 قيمة الخصم أكبر من المبلغ

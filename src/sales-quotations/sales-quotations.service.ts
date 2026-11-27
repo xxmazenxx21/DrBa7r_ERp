@@ -24,6 +24,8 @@ import { UpdateSalesQuotationDto } from './dto/update-sales-quotation.dto';
 import { UpdateQuotationStatusDto } from './dto/update-quotation-status.dto';
 import { SalesQuotationQueryDto } from './dto/sales-quotation-query.dto';
 import { SalesQuotationLineDto } from './dto/sales-quotation-line.dto';
+import { ConvertToInvoiceDto } from './dto/convert-to-invoice.dto';
+import { SalesInvoicesService } from '../sales-invoices/sales-invoices.service';
 
 const EDITABLE: QuotationStatus[] = [
   QuotationStatus.DRAFT,
@@ -72,6 +74,7 @@ export class SalesQuotationsService {
     private readonly prisma: PrismaService,
     private readonly numbering: NumberingService,
     private readonly productUnits: ProductUnitsService,
+    private readonly salesInvoices: SalesInvoicesService,
   ) {}
 
   private async getActive(id: string) {
@@ -342,8 +345,8 @@ export class SalesQuotationsService {
   /**
    * PATCH /sales-quotations/:id/status
    * Allowed: DRAFT -> SENT, SENT -> ACCEPTED, SENT -> REJECTED.
-   * Anything else -> 409 INVALID_STATUS. (CONVERTED will be set only by
-   * convert-to-invoice, Week 3 Task 4.) The check and the change are ONE conditional update.
+   * Anything else -> 409 INVALID_STATUS. (CONVERTED is set only by
+   * convert-to-invoice.) The check and the change are ONE conditional update.
    */
   async changeStatus(id: string, dto: UpdateQuotationStatusDto) {
     const from = STATUS_FROM[dto.status];
@@ -361,5 +364,54 @@ export class SalesQuotationsService {
       'Sales quotation status updated successfully',
       await this.getDetail(id),
     );
+  }
+
+  /**
+   * POST /sales-quotations/:id/convert-to-invoice
+   * An ACCEPTED quotation becomes a DRAFT sales invoice with the same
+   * customer, branch, lines, discounts and tax (default currency, rate 1).
+   * In ONE transaction:
+   *  1. ACCEPTED -> CONVERTED with a conditional update (not ACCEPTED, or
+   *     converted already -> 409 INVALID_STATUS; two clicks can't make two
+   *     invoices),
+   *  2. SalesInvoicesService.createFromQuotation creates the invoice
+   *     (same tx: if it fails, the quotation stays ACCEPTED and no SI
+   *     number is used),
+   *  3. convertedToInvoiceId = the new invoice.
+   * No stock effect: the invoice is a DRAFT (post it to take the goods out).
+   * Returns both: the quotation (CONVERTED) and the new invoice (DRAFT).
+   */
+  async convertToInvoice(id: string, dto: ConvertToInvoiceDto, userId: string) {
+    const invoice = await this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.salesQuotation.updateMany({
+        where: { id, deletedAt: null, status: QuotationStatus.ACCEPTED },
+        data: { status: QuotationStatus.CONVERTED, modifiedBy: userId },
+      });
+      if (claimed.count === 0) {
+        const current = await this.getActive(id); // 404 if missing
+        throw invalidStatus(
+          `This quotation is ${current.status}: only an ACCEPTED quotation can be converted to an invoice`,
+        );
+      }
+      const quotation = await tx.salesQuotation.findUniqueOrThrow({
+        where: { id },
+        include: { lines: { orderBy: { id: 'asc' } } },
+      });
+      const created = await this.salesInvoices.createFromQuotation(
+        tx,
+        quotation,
+        dto,
+        userId,
+      );
+      await tx.salesQuotation.update({
+        where: { id },
+        data: { convertedToInvoiceId: created.id },
+      });
+      return created;
+    });
+    return ok('Sales quotation converted to invoice successfully', {
+      quotation: await this.getDetail(id),
+      invoice: (await this.salesInvoices.findOne(invoice.id)).data,
+    });
   }
 }

@@ -756,13 +756,77 @@ Authorization: Bearer {{w2token}}
 GET {{baseUrl}}/sales-quotations?status=ACCEPTED&page=1&pageSize=20
 Authorization: Bearer {{w2token}}
 
+### Convert to invoice (CREDIT) -> quotation CONVERTED + SI-2026-000001 DRAFT, netTotal 974.70, remainingAmount 974.70
+# No stock effect yet: the invoice is a DRAFT (post it to take the goods out).
+# warehouseId is optional here (the quotation has one).
+# @name w3convert
+POST {{baseUrl}}/sales-quotations/{{w3quotation.response.body.$.data.id}}/convert-to-invoice
+Content-Type: application/json
+Authorization: Bearer {{w2token}}
+
+{
+  "paymentType": "CREDIT",
+  "invoiceDate": "2026-11-27"
+}
+
+### Convert again -> 409 INVALID_STATUS ("This quotation is CONVERTED: ...")
+POST {{baseUrl}}/sales-quotations/{{w3quotation.response.body.$.data.id}}/convert-to-invoice
+Content-Type: application/json
+Authorization: Bearer {{w2token}}
+
+{
+  "paymentType": "CREDIT",
+  "invoiceDate": "2026-11-27"
+}
+
+### Delete the CONVERTED quotation -> 409 INVALID_STATUS
+DELETE {{baseUrl}}/sales-quotations/{{w3quotation.response.body.$.data.id}}
+Authorization: Bearer {{w2token}}
+
+### The new invoice links back: convertedFromQuotation { id, code: "SQ-2026-000001" }
+GET {{baseUrl}}/sales-invoices/{{w3convert.response.body.$.data.invoice.id}}
+Authorization: Bearer {{w2token}}
+
+### A second quotation, no warehouse -> SQ-2026-000002 (DRAFT)
+# @name w3draftQuotation
+POST {{baseUrl}}/sales-quotations
+Content-Type: application/json
+Authorization: Bearer {{w2token}}
+
+{
+  "quotationDate": "2026-11-27",
+  "customerId": "{{w3customer.response.body.$.data.id}}",
+  "branchId": "{{w2branch.response.body.$.data.id}}",
+  "lines": [
+    {
+      "productId": "{{w2brush.response.body.$.data.id}}",
+      "itemUnitId": "{{w2carton.response.body.$.data.id}}",
+      "quantity": 1,
+      "unitPrice": 180
+    }
+  ]
+}
+
+### Convert a DRAFT quotation -> 409 INVALID_STATUS (only ACCEPTED can be converted)
+# (once ACCEPTED, this one would need "warehouseId" in the body: it has none -> 400 VALIDATION_FAILED field warehouseId)
+POST {{baseUrl}}/sales-quotations/{{w3draftQuotation.response.body.$.data.id}}/convert-to-invoice
+Content-Type: application/json
+Authorization: Bearer {{w2token}}
+
+{
+  "paymentType": "CASH",
+  "invoiceDate": "2026-11-27",
+  "warehouseId": "{{w2warehouse.response.body.$.data.id}}"
+}
+
 ### =====================================================================
 ### WEEK 3 - SALES INVOICES (samples, not the big test)
 ### =====================================================================
 # Uses "WEEK 2 - THE BIG TEST" (Maadi: 218 brushes @ 10.6818) and the customer
 # of "WEEK 3 - SALES QUOTATIONS" above. Run those first.
 
-### Sales invoice: 5 cartons x 180, discount 5%, tax 14%, CREDIT -> SI-2026-000001, netTotal 974.70 (DRAFT)
+### Sales invoice: 5 cartons x 180, discount 5%, tax 14%, CREDIT -> netTotal 974.70 (DRAFT)
+# SI-2026-000002 after the convert above (SI-2026-000001 if you skipped it).
 # @name w3invoice
 POST {{baseUrl}}/sales-invoices
 Content-Type: application/json
