@@ -4,8 +4,8 @@ FRONTEND - READ THIS FIRST (Week 3 backend changes)
 >>> This file is updated with every Week 3 task. Check the "Last update" line
 >>> below after every pull.
 
-Last update: Week 3 Task 1 (setup). No new endpoints yet; only new enum
-values (below). Nothing you use today changed.
+Last update: Week 3 Task 2 (sales quotations, without convert-to-invoice).
+New endpoints: PART 2. New enum values: PART 1. Nothing you use today changed.
 
 
 0. Get the new backend
@@ -58,3 +58,42 @@ A stock count (جرد) has no type of its own: it writes ADJUSTMENT (تسوية)
 movements with sourceType "SC" (show the count number from sourceCode).
 
 Add these labels to the item card and the movements filter now.
+
+
+=====================================================================
+PART 2 - SALES QUOTATIONS (عروض أسعار البيع)  - doc/week3/sales-quotations.txt
+=====================================================================
+    POST   /sales-quotations             new DRAFT quotation with its lines
+    GET    /sales-quotations             list (PAGINATED; filters customerId,
+                                         branchId, status, dateFrom, dateTo,
+                                         search = code / customer name / notes)
+    GET    /sales-quotations/:id         header + lines + isExpired
+    PATCH  /sales-quotations/:id         edit (DRAFT / SENT only; "lines" REPLACES all lines)
+    PATCH  /sales-quotations/:id/status  { "status": "SENT" | "ACCEPTED" | "REJECTED" }
+    DELETE /sales-quotations/:id         soft delete (not when CONVERTED)
+  The mirror of purchase quotations (doc/week2/week2flow.txt): same screen,
+  same lines table, same statuses (DRAFT -> SENT -> ACCEPTED / REJECTED) and
+  errors - with customerId (العميل, from GET /customer) instead of supplierId,
+  and SQ numbers. No effect on stock or money.
+  The user types unitPrice (سعر البيع): suggest it from the product's
+  retailPrice / wholesalePrice. No price level per customer.
+  Example: 5 cartons x 180, discount 5%, tax 14% -> SQ-2026-000001,
+  subTotal 900, discountValue 45, taxValue 119.70, netTotal 974.70.
+  DRAFT -> ACCEPTED directly -> 409 INVALID_STATUS.
+  convert-to-invoice comes with Task 4 (after sales invoices).
+
+Arabic labels (new keys)
+  Sales quotation: code = رقم العرض, quotationDate = تاريخ العرض,
+                   validUntil = صالح حتى, status = الحالة, customerId = العميل,
+                   branchId = الفرع, warehouseId = المخزن, subTotal = الإجمالي,
+                   discountPercent = نسبة الخصم %, discountValue = قيمة الخصم,
+                   taxPercent = نسبة الضريبة %, taxValue = قيمة الضريبة,
+                   netTotal = الصافي, convertedToInvoiceId = الفاتورة الناتجة,
+                   notes = ملاحظات, createdBy = أنشأه, modifiedBy = عدّله,
+                   isExpired = منتهي الصلاحية
+  Quotation line:  productId = الصنف, itemUnitId = الوحدة, unitFactor = معامل الوحدة,
+                   quantity = الكمية, unitPrice = سعر البيع للوحدة,
+                   discountPercent = نسبة خصم البند %, discountValue = قيمة خصم البند,
+                   lineTotal = إجمالي البند
+  QuotationStatus: DRAFT = مسودة, SENT = مُرسل, ACCEPTED = مقبول,
+                   REJECTED = مرفوض, CONVERTED = تم التحويل لفاتورة

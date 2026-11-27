@@ -1,0 +1,271 @@
+Sales Quotations API Documentation (عروض أسعار البيع)
+====================================================
+
+Base URL
+--------
+http://localhost:3000   (the backend runs on your machine with Docker, see README.md)
+
+Authentication & access
+-----------------------
+All endpoints require:  Authorization: Bearer <access_token>   (see doc/week1/auth.txt)
+Only SUPERADMIN can call them:
+  - no / invalid token  -> 401 { "statusCode": 401, "message": "Unauthorized", "error": "Unauthorized", "code": "UNAUTHORIZED", "field": null }
+  - other roles         -> 403 { "statusCode": 403, "message": "You do not have the required roles to access this resource", "error": "Forbidden", "code": "FORBIDDEN", "field": null }
+
+Response shape: every success is { "message": "...", "data": ... }
+Every error has { statusCode, message, error, code, field } (see doc/week1/00-overview.txt)
+Unknown fields (also inside lines) -> 400 "property <name> should not exist"
+Delete is a SOFT delete. Numbers are SENT as numbers and RETURNED as strings.
+Dates are SENT as "YYYY-MM-DD" and RETURNED as "YYYY-MM-DDT00:00:00.000Z".
+
+What is it?
+-----------
+Our prices for a CUSTOMER (العميل). A sales quotation has NO effect on stock
+or money. It is the mirror of the purchase quotation (doc/week2/purchase-quotations.txt):
+same header + lines, same statuses, same rules - with customerId instead of
+supplierId and SQ numbers.
+
+  - The server gives the number: SQ-2026-000001 (one counter per year).
+  - The server computes EVERY total; you send quantities, prices and percents.
+  - Status (الحالة) - QuotationStatus:
+        DRAFT (مسودة) --> SENT (مُرسل) --> ACCEPTED (مقبول)
+                                      \-> REJECTED (مرفوض)
+        ACCEPTED --> CONVERTED (تم التحويل لفاتورة)   (convert-to-invoice: Week 3 Task 4, not available yet)
+    Only these moves are allowed; anything else -> 409 INVALID_STATUS.
+  - Edit: only while DRAFT or SENT. Delete: any status except CONVERTED.
+  - Selling price: you send unitPrice (suggest the product's retailPrice /
+    wholesalePrice in the form). No price level per customer.
+
+The brush example (Week 3 story)
+--------------------------------
+  5 cartons (12 brushes each) x 180, discount 5%, tax 14%:
+    lineTotal 900 -> subTotal 900, discountValue 45, taxValue 119.70 (14% of 855),
+    netTotal 974.70, code SQ-2026-000001
+
+Header fields (Arabic label = what the screen shows)
+----------------------------------------------------
+  field                 Arabic           who      notes
+  --------------------  ---------------  -------  ---------------------------------------------
+  id                    -                server
+  code                  رقم العرض         server   SQ-2026-000001 (year = quotationDate's year)
+  quotationDate         تاريخ العرض       user     "2026-11-27" (required)
+  validUntil            صالح حتى          user     optional, >= quotationDate; null clears
+  status                الحالة            server   DRAFT at creation (change it with /status)
+  customerId            العميل            user     an active customer (GET /customer)
+  branchId              الفرع             user     an active branch
+  warehouseId           المخزن            user     optional, must belong to branchId; null clears
+  subTotal              الإجمالي          server
+  discountPercent       نسبة الخصم %      user     optional, 0-100, max 2 decimals
+  discountValue         قيمة الخصم        server   (or yours, if you send no discountPercent; max 2 decimals)
+  taxPercent            نسبة الضريبة %    user     optional, 0-100 (e.g. 14)
+  taxValue              قيمة الضريبة      server
+  netTotal              الصافي            server
+  convertedToInvoiceId  الفاتورة الناتجة   server   set by convert-to-invoice (Task 4); null for now
+  notes                 ملاحظات           user     optional, max 500; null clears
+  createdBy / createdDate      أنشأه / تاريخ الإنشاء   server (the logged-in user)
+  modifiedBy / modifiedDate    عدّله / تاريخ التعديل   server
+  isExpired             منتهي الصلاحية    server   true when validUntil has passed (read only)
+
+Line fields (البنود)
+-------------------
+  field            Arabic            who      notes
+  ---------------  ----------------  -------  ---------------------------------------------
+  productId        الصنف              user     an active product (SERVICE products are allowed)
+  itemUnitId       الوحدة             user     the primary unit or one of the product's units
+                                              (GET /products/:productId/units)
+  unitFactor       معامل الوحدة        server   pieces in one itemUnitId (carton = 12)
+  quantity         الكمية             user     > 0, max 4 decimals, in itemUnitId
+  unitPrice        سعر البيع للوحدة    user     >= 0, max 4 decimals, price of ONE itemUnitId
+  discountPercent  نسبة خصم البند %    user     optional, 0-100   } send ONE of them,
+  discountValue    قيمة خصم البند      user     optional, >= 0    } not both
+  lineTotal        إجمالي البند        server   quantity x unitPrice - line discount
+  notes            ملاحظات            user     optional, max 250
+
+Totals
+------
+  lineTotal     = quantity x unitPrice - line discount            (4 decimals)
+  subTotal      = sum of lineTotal                                (2 decimals)
+  discountValue = subTotal x discountPercent / 100 (a percent above 0 wins;
+                  otherwise the fixed discountValue you send)
+  taxValue      = (subTotal - discountValue) x taxPercent / 100
+  netTotal      = subTotal - discountValue + taxValue             (half-up rounding)
+
+---------------------------------------------------------
+SALES QUOTATION APIs
+---------------------------------------------------------
+
+1) Create (DRAFT)
+   Method: POST
+   URL: /sales-quotations
+
+   Request Example (the brush quotation):
+   {
+     "quotationDate": "2026-11-27",
+     "validUntil": "2026-12-10",
+     "customerId": "cmwykv6zq00002fn7p7rmrkus",
+     "branchId": "cmwykv6zy00012fn74i0gngpf",
+     "warehouseId": "cmwykv70b00022fn7lqocsrit",
+     "discountPercent": 5,
+     "taxPercent": 14,
+     "lines": [
+       { "productId": "cmwykv71d00062fn738kjfg2f", "itemUnitId": "cmwykv71100052fn73o1fnjk9", "quantity": 5, "unitPrice": 180 }
+     ]
+   }
+
+   Response Example (201) - real response:
+   {
+     "message": "Sales quotation created successfully",
+     "data": {
+       "id": "cmwykv73700092fn7k75dzn1h",
+       "code": "SQ-2026-000001",
+       "quotationDate": "2026-11-27T00:00:00.000Z",
+       "validUntil": "2026-12-10T00:00:00.000Z",
+       "status": "DRAFT",
+       "customerId": "cmwykv6zq00002fn7p7rmrkus",
+       "branchId": "cmwykv6zy00012fn74i0gngpf",
+       "warehouseId": "cmwykv70b00022fn7lqocsrit",
+       "subTotal": "900",
+       "discountPercent": "5",
+       "discountValue": "45",
+       "taxPercent": "14",
+       "taxValue": "119.7",
+       "netTotal": "974.7",
+       "convertedToInvoiceId": null,
+       "notes": null,
+       "createdBy": "3410a3ea-a5c3-4f6a-b177-3cd973fb010d",
+       "createdDate": "2026-11-27T06:05:42.691Z",
+       "modifiedBy": null,
+       "modifiedDate": "2026-11-27T06:05:42.691Z",
+       "deletedAt": null,
+       "customer": { "id": "cmwykv6zq00002fn7p7rmrkus", "code": "CUS-709561", "name": "صيدلية الشفاء" },
+       "branch": { "id": "cmwykv6zy00012fn74i0gngpf", "code": "branch-136432", "name": "فرع المعادي" },
+       "warehouse": { "id": "cmwykv70b00022fn7lqocsrit", "name": "مخزن المعادي" },
+       "createdByUser": { "id": "3410a3ea-a5c3-4f6a-b177-3cd973fb010d", "username": "admin" },
+       "modifiedByUser": null,
+       "lines": [
+         {
+           "id": "cmwykv73a000a2fn7p74l2ay3",
+           "salesQuotationId": "cmwykv73700092fn7k75dzn1h",
+           "productId": "cmwykv71d00062fn738kjfg2f",
+           "itemUnitId": "cmwykv71100052fn73o1fnjk9",
+           "unitFactor": "12",
+           "quantity": "5",
+           "unitPrice": "180",
+           "discountPercent": null,
+           "discountValue": null,
+           "lineTotal": "900",
+           "notes": null,
+           "product": { "id": "cmwykv71d00062fn738kjfg2f", "code": "PRD-680339", "name": "فرشة", "itemType": "STOCK" },
+           "itemUnit": { "id": "cmwykv71100052fn73o1fnjk9", "code": "unit-252832", "name": "كرتونة" }
+         }
+       ],
+       "isExpired": false
+     }
+   }
+
+   Error Responses:
+   - 400 no lines
+     { "statusCode": 400, "message": ["lines must contain at least 1 elements"], "error": "Bad Request", "code": "VALIDATION_FAILED", "field": "lines" }
+   - 400 a line field is invalid ("field" = the path of the line field, N starts at 0)
+     { "statusCode": 400, "message": ["lines.1.quantity must be a positive number"], "error": "Bad Request", "code": "VALIDATION_FAILED", "field": "lines.1.quantity" }
+   - 400 both line discounts
+     { "statusCode": 400, "message": ["lines.1: send discountPercent or discountValue, not both"], "error": "Bad Request", "code": "VALIDATION_FAILED", "field": "lines.1.discountValue" }
+   - 400 a line's unit is not one of the product's units
+     { "statusCode": 400, "message": "unit is not defined for this product", "error": "Bad Request", "code": "BAD_REQUEST", "field": "lines.1.itemUnitId" }
+   - 400 a line's product missing or deleted
+     { "statusCode": 400, "message": "productId does not exist", "error": "Bad Request", "code": "DOES_NOT_EXIST", "field": "lines.0.productId" }
+   - 400 a discount bigger than the amount (line or header)
+     { "statusCode": 400, "message": "discountValue must be between 0 and the amount it is taken from", "error": "Bad Request", "code": "BAD_REQUEST", "field": "lines.0.discountValue" }
+   - 400 customerId / branchId missing or deleted
+     { "statusCode": 400, "message": "customerId does not exist", "error": "Bad Request", "code": "DOES_NOT_EXIST", "field": "customerId" }
+   - 400 warehouse of another branch
+     { "statusCode": 400, "message": "warehouseId must belong to branchId", "error": "Bad Request", "code": "BAD_REQUEST", "field": "warehouseId" }
+   - 400 validUntil before quotationDate
+     { "statusCode": 400, "message": "validUntil must be on or after quotationDate", "error": "Bad Request", "code": "BAD_REQUEST", "field": "validUntil" }
+   - 400 sending code / status / totals (subTotal, netTotal, lineTotal...) -> "property X should not exist"
+
+2) List
+   Method: GET
+   URL: /sales-quotations
+   Description: PAGINATED, newest quotationDate first. Each item = the header
+                + customer / branch / warehouse + "_count": { "lines": N } +
+                isExpired. NO lines (open one quotation to see them).
+   Query (all optional): customerId, branchId, status, dateFrom, dateTo
+   (quotationDate, inclusive), search (part of the code, the customer name or
+   the notes, any case), page, pageSize (1-100, default 20).
+
+   Request Example:
+   GET /sales-quotations?status=ACCEPTED&search=الشفاء&page=1&pageSize=20
+
+   Response Example (200):
+   {
+     "message": "Sales quotations returned successfully",
+     "data": {
+       "items": [ { ...header, "code": "SQ-2026-000001", "status": "ACCEPTED",
+                    "customer": { "id": "cmwykv6zq00002fn7p7rmrkus", "code": "CUS-709561", "name": "صيدلية الشفاء" },
+                    "branch": {...}, "warehouse": {...}, "_count": { "lines": 1 }, "isExpired": false } ],
+       "meta": { "page": 1, "pageSize": 20, "total": 1, "totalPages": 1 }
+     }
+   }
+   Error: a bad filter (e.g. status=POSTED) or an unknown parameter -> 400 VALIDATION_FAILED.
+
+3) Get one
+   Method: GET
+   URL: /sales-quotations/:id
+   Response (200): { "message": "Sales quotation returned successfully", "data": { ...same object as Create } }
+   Error (404): { "statusCode": 404, "message": "Sales quotation with id xxx not found", "error": "Not Found", "code": "NOT_FOUND", "field": null }
+
+4) Update
+   Method: PATCH
+   URL: /sales-quotations/:id
+   Description: Only while DRAFT or SENT. Any field from Create, all optional.
+                "lines", when sent, REPLACES ALL the lines (send the full list).
+                Not sent = the lines stay. Totals are always computed again.
+                null clears validUntil / warehouseId / notes; null on other
+                fields -> 400. A discountValue sent alone switches to a fixed
+                discount (discountPercent becomes 0).
+
+   Request Example:
+   { "discountPercent": 10, "notes": "السعر شامل التوصيل" }
+
+   Response (200): { "message": "Sales quotation updated successfully", "data": { ...quotation object } }
+   Errors: same as Create, plus
+   - 409 not DRAFT / SENT
+     { "statusCode": 409, "message": "This quotation is ACCEPTED: only DRAFT or SENT quotations can be edited", "error": "Conflict", "code": "INVALID_STATUS", "field": "status" }
+
+5) Change status
+   Method: PATCH
+   URL: /sales-quotations/:id/status
+   Body: { "status": "SENT" }   (one of SENT, ACCEPTED, REJECTED)
+   Allowed: DRAFT -> SENT, SENT -> ACCEPTED, SENT -> REJECTED.
+
+   Response (200) - real response after DRAFT -> SENT:
+   { "message": "Sales quotation status updated successfully", "data": { ...quotation object, "code": "SQ-2026-000001", "status": "SENT" } }
+
+   Errors:
+   - 409 move not allowed (e.g. DRAFT -> ACCEPTED)
+     { "statusCode": 409, "message": "Can't change status from DRAFT to ACCEPTED (allowed: DRAFT -> SENT, SENT -> ACCEPTED or REJECTED)", "error": "Conflict", "code": "INVALID_STATUS", "field": "status" }
+   - 400 another value (DRAFT, CONVERTED...)
+     { "statusCode": 400, "message": ["status must be one of the following values: SENT, ACCEPTED, REJECTED"], "error": "Bad Request", "code": "VALIDATION_FAILED", "field": "status" }
+
+6) Delete
+   Method: DELETE
+   URL: /sales-quotations/:id
+   Description: Soft delete, any status EXCEPT CONVERTED.
+   Response (200): { "message": "Sales quotation deleted successfully", "data": null }
+   Error (409): { "statusCode": 409, "message": "A CONVERTED quotation can't be deleted", "error": "Conflict", "code": "INVALID_STATUS", "field": "status" }
+
+7) Convert to invoice
+   POST /sales-quotations/:id/convert-to-invoice - Week 3 Task 4 (after sales
+   invoices). Not available yet (404).
+
+Suggested Arabic messages
+-------------------------
+  INVALID_STATUS                              لا يمكن تنفيذ العملية في حالة المستند الحالية
+  VALIDATION_FAILED + lines                   يجب إضافة بند واحد على الأقل
+  VALIDATION_FAILED + lines.N.discountValue   أدخل نسبة الخصم أو قيمة الخصم فقط، وليس الاثنين
+  BAD_REQUEST + lines.N.itemUnitId            هذه الوحدة غير معرفة لهذا الصنف
+  DOES_NOT_EXIST + customerId                 العميل غير موجود أو محذوف
+  BAD_REQUEST + warehouseId                   المخزن يجب أن يكون تابعًا لنفس الفرع
+  BAD_REQUEST + validUntil                    تاريخ الصلاحية يجب أن يكون بعد تاريخ العرض
+  BAD_REQUEST + discountValue                 قيمة الخصم أكبر من المبلغ

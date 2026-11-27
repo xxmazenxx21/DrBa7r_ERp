@@ -1,14 +1,15 @@
 model Customer {
-  id               String    @id @default(cuid())
-  code             String    @unique
+  id               String           @id @default(cuid())
+  code             String           @unique
   name             String
   taxNumber        String?
   commercialRecord String?
   phone            String?
   address          String?
-  creditLimit      Decimal   @default(0) @db.Decimal(18, 2)
-  openingBalance   Decimal   @default(0) @db.Decimal(18, 2)
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  creditLimit      Decimal          @default(0) @db.Decimal(18, 2)
+  openingBalance   Decimal          @default(0) @db.Decimal(18, 2)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
   deletedAt        DateTime?
+  salesQuotations  SalesQuotation[]
 }
