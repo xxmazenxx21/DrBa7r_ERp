@@ -1,9 +1,9 @@
 ERP API - Overview
 ==================
 
->>> Frontend: read doc/FRONTEND_WEEK1_READ_FIRST.txt first, then
->>> doc/FRONTEND_WEEK1_UPDATE_2.txt and doc/FRONTEND_WEEK1_UPDATE_3.txt
->>> (what changed and what you must update), then this file.
+>>> Frontend: this file is the index of the Week 1 modules and the general
+>>> rules. What changed later: doc/week2/week2flow.txt (Week 2) and
+>>> doc/FRONTEND_WEEK3_READ_FIRST.txt (Week 3).
 
 Base URL
 --------
@@ -139,8 +139,18 @@ Error codes:
     INTERNAL_ERROR       500     null                  unexpected server problem
 
 Translate with "code" (+ "field"), not by reading "message": the message text
-may change, the codes will not. Arabic messages for every code:
-doc/FRONTEND_WEEK1_UPDATE_2.txt
+may change, the codes will not. Suggested Arabic messages:
+    VALIDATION_FAILED   البيانات المدخلة غير صحيحة، راجع حقل {field}
+    DOES_NOT_EXIST      {field} المختار غير موجود أو تم حذفه
+    BAD_REQUEST         لا يمكن تنفيذ الطلب، راجع البيانات وحاول مرة أخرى
+    UNAUTHORIZED        يجب تسجيل الدخول أولاً
+    FORBIDDEN           ليس لديك صلاحية للقيام بهذا الإجراء
+    NOT_FOUND           العنصر المطلوب غير موجود أو تم حذفه
+    ALREADY_EXISTS      {field} مستخدم بالفعل، اختر قيمة أخرى
+    BELONGS_TO_DELETED  {field} مرتبط بسجل محذوف ولا يمكن استخدامه
+    INTERNAL_ERROR      حدث خطأ غير متوقع، حاول مرة أخرى لاحقاً
+(Week 2 codes INVALID_STATUS, INSUFFICIENT_STOCK, QUANTITY_EXCEEDED:
+doc/week2/00-overview.txt.)
 
 400 Validation error ("message" is an ARRAY):
 {

@@ -26,6 +26,12 @@ enum DocumentType {
   PQ // عرض سعر شراء   (Purchase Quotation)
   PI // فاتورة شراء    (Purchase Invoice)
   PR // مرتجع شراء     (Purchase Return)
+  // Week 3
+  SQ // عرض سعر بيع    (Sales Quotation)
+  SI // فاتورة بيع     (Sales Invoice)
+  SR // مرتجع بيع      (Sales Return)
+  ST // تحويل مخزني    (Stock Transfer)
+  SC // جرد            (Stock Count)
 }
 
 // One stock movement line = one entry in the item card (كارت الصنف)
@@ -36,4 +42,13 @@ enum StockMovementType {
   PURCHASE_CANCEL // إلغاء فاتورة شراء
   PURCHASE_RETURN // مرتجع شراء
   PURCHASE_RETURN_CANCEL // إلغاء مرتجع شراء
+  // Week 3
+  SALE // بيع              (-) sales invoice posted
+  SALE_CANCEL // إلغاء فاتورة بيع  (+)
+  SALE_RETURN // مرتجع بيع         (+)
+  SALE_RETURN_CANCEL // إلغاء مرتجع بيع   (-)
+  TRANSFER_OUT // تحويل صادر        (-) from the source warehouse
+  TRANSFER_IN // تحويل وارد        (+) into the destination warehouse
+  TRANSFER_OUT_CANCEL // إلغاء تحويل صادر  (+) back into the source
+  TRANSFER_IN_CANCEL // إلغاء تحويل وارد  (-) out of the destination
 }

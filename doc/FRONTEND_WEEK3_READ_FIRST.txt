@@ -1,0 +1,60 @@
+FRONTEND - READ THIS FIRST (Week 3 backend changes)
+===================================================
+
+>>> This file is updated with every Week 3 task. Check the "Last update" line
+>>> below after every pull.
+
+Last update: Week 3 Task 1 (setup). No new endpoints yet; only new enum
+values (below). Nothing you use today changed.
+
+
+0. Get the new backend
+----------------------
+    git checkout main
+    git pull origin main
+    docker compose up -d --build
+
+"--build" is REQUIRED: it rebuilds the API and runs the new database
+migrations (your data is kept). Base URL: http://localhost:3000
+(login admin / admin123). Full steps: README.md.
+
+How to read the docs
+--------------------
+  1. THIS file (what is new / changed in Week 3)
+  2. doc/week3/00-overview.txt (the Week 3 story, the 6 decisions, the 5
+     rules, the module list)
+  3. the module files in doc/week3/ (added with each task)
+  The Week 2 flow (purchasing, stock, item card) is in doc/week2/week2flow.txt.
+
+
+=====================================================================
+PART 1 - NEW ENUM VALUES (send / receive the TEXT value)
+=====================================================================
+They will appear in the Week 3 documents and in the item card
+(GET /stock-movements/item-card, GET /stock-movements?type=...).
+
+DocumentType (document number prefix / sourceType of a stock movement)
+  existing:  PQ = عرض سعر شراء, PI = فاتورة شراء, PR = مرتجع شراء
+  new:       SQ = عرض سعر بيع        (Sales Quotation)
+             SI = فاتورة بيع         (Sales Invoice)
+             SR = مرتجع بيع          (Sales Return)
+             ST = تحويل مخزني        (Stock Transfer)
+             SC = جرد                (Stock Count)
+
+StockMovementType (item card "type")
+  existing:  OPENING = رصيد افتتاحي, ADJUSTMENT = تسوية, PURCHASE = شراء,
+             PURCHASE_CANCEL = إلغاء فاتورة شراء, PURCHASE_RETURN = مرتجع شراء,
+             PURCHASE_RETURN_CANCEL = إلغاء مرتجع شراء
+  new:       SALE                 = بيع               (-)  a sales invoice is posted
+             SALE_CANCEL          = إلغاء فاتورة بيع   (+)
+             SALE_RETURN          = مرتجع بيع          (+)
+             SALE_RETURN_CANCEL   = إلغاء مرتجع بيع    (-)
+             TRANSFER_OUT         = تحويل صادر         (-)  out of the source warehouse
+             TRANSFER_IN          = تحويل وارد         (+)  into the destination warehouse
+             TRANSFER_OUT_CANCEL  = إلغاء تحويل صادر   (+)  back into the source
+             TRANSFER_IN_CANCEL   = إلغاء تحويل وارد   (-)  out of the destination
+
+A stock count (جرد) has no type of its own: it writes ADJUSTMENT (تسوية)
+movements with sourceType "SC" (show the count number from sourceCode).
+
+Add these labels to the item card and the movements filter now.

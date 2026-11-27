@@ -725,4 +725,4 @@ Shared components to build first:
   - A currency used by purchase invoices can't be deleted.
   - Errors inside document lines have "field": "lines.N.<field>".
   - GET /products/:id has a new "units" array (additive).
-Full BEFORE / AFTER examples: doc/FRONTEND_WEEK2_READ_FIRST.txt (Part 2).
+The exact error bodies are in the steps above (section 5) and in section 7.3.

@@ -178,14 +178,14 @@ Host: localhost   Port: 5433   User: erp   Password: erp_password   Database: er
 ## API documentation (for the frontend)
 
 > **Frontend, read in this order:**
-> 1. [`doc/FRONTEND_WEEK1_READ_FIRST.txt`](doc/FRONTEND_WEEK1_READ_FIRST.txt), [`doc/FRONTEND_WEEK1_UPDATE_2.txt`](doc/FRONTEND_WEEK1_UPDATE_2.txt), [`doc/FRONTEND_WEEK1_UPDATE_3.txt`](doc/FRONTEND_WEEK1_UPDATE_3.txt) (Week 1 changes)
-> 2. [`doc/FRONTEND_WEEK2_READ_FIRST.txt`](doc/FRONTEND_WEEK2_READ_FIRST.txt) (Week 2 so far; updated with every Week 2 task)
->
-> Together they list every change you must handle, including the breaking ones.
+> 1. [`doc/FRONTEND_WEEK3_READ_FIRST.txt`](doc/FRONTEND_WEEK3_READ_FIRST.txt): what is new / changed in Week 3 (updated with every Week 3 task)
+> 2. [`doc/week3/00-overview.txt`](doc/week3/00-overview.txt): the Week 3 story, decisions, rules and modules
+> 3. [`doc/week2/week2flow.txt`](doc/week2/week2flow.txt): the whole Week 2 flow (purchasing, stock, item card) in one file
 
 The docs are in [`doc/`](doc/), organized by week, with one `.txt` file per module. Start with
-[`doc/week1/00-overview.txt`](doc/week1/00-overview.txt) (login, general rules, errors, every Week 1 module) and
-[`doc/week2/00-overview.txt`](doc/week2/00-overview.txt) (pagination, new error codes, Week 2 modules).
+[`doc/week1/00-overview.txt`](doc/week1/00-overview.txt) (login, general rules, errors, every Week 1 module),
+[`doc/week2/00-overview.txt`](doc/week2/00-overview.txt) (pagination, new error codes, Week 2 modules) and
+[`doc/week3/00-overview.txt`](doc/week3/00-overview.txt) (Week 3).
 
 Every error response has a stable `code` (e.g. `ALREADY_EXISTS`, `NOT_FOUND`) and a `field`. The frontend translates errors with these, not with the English `message`.
 
