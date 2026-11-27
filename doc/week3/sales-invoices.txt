@@ -45,9 +45,11 @@ currency + exchange rate, Post and Cancel. Two differences:
         invoice.convertedFromQuotation = { id, code }      (GET /sales-invoices/:id)
     A direct invoice has "convertedFromQuotation": null. The converted invoice
     is edited, posted, cancelled and (while DRAFT) deleted like any other one.
-    The quotation stays CONVERTED whatever happens to the invoice (same as
-    purchases); if the DRAFT invoice was deleted, GET /sales-invoices/<its id>
-    gives 404.
+    Deleting the DRAFT invoice frees its quotation (same transaction): the
+    quotation goes back to ACCEPTED with convertedToInvoiceId = null and can
+    be converted again (a new SI number). Cancelling a POSTED invoice does
+    NOT: the quotation stays CONVERTED and still points to the cancelled
+    invoice. Same rule as purchases.
 
 The brush example (Week 3 story)
 --------------------------------
@@ -290,6 +292,11 @@ SALES INVOICE APIs
    Method: DELETE
    URL: /sales-invoices/:id
    Response (200): { "message": "Sales invoice deleted successfully", "data": null }
+   Made by convert-to-invoice? Deleting the DRAFT also frees its quotation, in
+   the same transaction: the quotation goes back to "status": "ACCEPTED" with
+   "convertedToInvoiceId": null, so it can be converted again (a new SI
+   number). Cancelling a POSTED invoice does NOT do this: the quotation stays
+   CONVERTED and keeps pointing to the cancelled invoice.
    Error (409):
    { "statusCode": 409, "message": "Only a DRAFT invoice can be deleted (cancel a POSTED invoice instead)", "error": "Conflict", "code": "INVALID_STATUS", "field": "status" }
 

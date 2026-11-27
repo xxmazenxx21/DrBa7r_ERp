@@ -263,6 +263,11 @@ PURCHASE INVOICE APIs
    Method: DELETE
    URL: /purchase-invoices/:id
    Response (200): { "message": "Purchase invoice deleted successfully", "data": null }
+   Made by convert-to-invoice? Deleting the DRAFT also frees its quotation, in
+   the same transaction: the quotation goes back to "status": "ACCEPTED" with
+   "convertedToInvoiceId": null, so it can be converted again (a new PI
+   number). Cancelling a POSTED invoice does NOT do this: the quotation stays
+   CONVERTED and keeps pointing to the cancelled invoice.
    Error (409):
    { "statusCode": 409, "message": "Only a DRAFT invoice can be deleted (cancel a POSTED invoice instead)", "error": "Conflict", "code": "INVALID_STATUS", "field": "status" }
 

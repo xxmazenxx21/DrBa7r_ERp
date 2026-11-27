@@ -31,6 +31,8 @@ supplierId and SQ numbers.
         DRAFT (مسودة) --> SENT (مُرسل) --> ACCEPTED (مقبول)
                                       \-> REJECTED (مرفوض)
         ACCEPTED --> CONVERTED (تم التحويل لفاتورة)   (only via convert-to-invoice, API 7)
+        CONVERTED --> ACCEPTED   only when its DRAFT invoice is deleted
+                                 (DELETE /sales-invoices/:id)
     Only these moves are allowed; anything else -> 409 INVALID_STATUS.
   - Edit: only while DRAFT or SENT. Delete: any status except CONVERTED.
   - Selling price: you send unitPrice (suggest the product's retailPrice /
@@ -351,6 +353,11 @@ SALES QUOTATION APIs
    - GET /sales-quotations/:id has "status": "CONVERTED" and "convertedToInvoiceId";
      open the invoice with GET /sales-invoices/<convertedToInvoiceId>;
    - GET /sales-invoices/:id has "convertedFromQuotation": { "id", "code": "SQ-2026-000001" }.
+   - DELETE of that invoice while it is DRAFT frees the quotation (same
+     transaction): "status": "ACCEPTED", "convertedToInvoiceId": null, and it
+     can be converted again (a new SI number);
+   - once the invoice is POSTED the quotation stays CONVERTED, also after the
+     invoice is cancelled (it keeps the link to the cancelled invoice).
 
 Suggested Arabic messages
 -------------------------

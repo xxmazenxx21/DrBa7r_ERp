@@ -30,6 +30,8 @@ A quotation has NO effect on stock or money. It is a document with a header
         DRAFT (مسودة) --> SENT (مُرسل) --> ACCEPTED (مقبول)
                                       \-> REJECTED (مرفوض)
         ACCEPTED --> CONVERTED (تم التحويل لفاتورة)   (POST /purchase-quotations/:id/convert-to-invoice)
+        CONVERTED --> ACCEPTED   only when its DRAFT invoice is deleted
+                                 (DELETE /purchase-invoices/:id)
     Only these moves are allowed; anything else -> 409 INVALID_STATUS.
   - Editing is allowed only while DRAFT or SENT.
 
@@ -257,6 +259,12 @@ PURCHASE QUOTATION APIs
                 Clicking twice can't make two invoices (the second gets 409).
                 The invoice is a normal DRAFT: edit it (payment, expiry dates,
                 supplier invoice number...) and then post it.
+                Deleting that DRAFT invoice (DELETE /purchase-invoices/:id)
+                puts the quotation back to ACCEPTED with
+                convertedToInvoiceId = null: it can be converted again (a new
+                PI number). Once the invoice is POSTED the quotation stays
+                CONVERTED, also after the invoice is cancelled (it keeps the
+                link to the cancelled invoice).
 
    Body:
    - paymentType: required, CASH (paid = net) or CREDIT (paid 0)

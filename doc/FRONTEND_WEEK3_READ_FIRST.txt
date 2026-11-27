@@ -4,10 +4,12 @@ FRONTEND - READ THIS FIRST (Week 3 backend changes)
 >>> This file is updated with every Week 3 task. Check the "Last update" line
 >>> below after every pull.
 
-Last update: Week 3 Task 4 (sales quotation convert-to-invoice).
+Last update: fix between Task 4 and Task 5 (deleting a converted DRAFT
+invoice frees its quotation, purchase AND sales: PART 5).
 New endpoints: PART 2 (sales quotations), PART 3 (sales invoices),
 PART 4 (POST /sales-quotations/:id/convert-to-invoice).
-New enum values: PART 1. Changed: DELETE /customer/:id and DELETE /currency/:id (PART 3).
+New enum values: PART 1. Changed: DELETE /customer/:id and DELETE /currency/:id (PART 3),
+DELETE /purchase-invoices/:id and DELETE /sales-invoices/:id (PART 5).
 
 
 0. Get the new backend
@@ -201,3 +203,29 @@ PART 4 - CONVERT A SALES QUOTATION TO AN INVOICE (تحويل العرض لفات
   Nothing is saved when a convert fails: the quotation stays ACCEPTED and no
   SI number is used.
 
+
+=====================================================================
+PART 5 - DELETING A CONVERTED DRAFT INVOICE FREES ITS QUOTATION
+         (purchase AND sales - this also changes Week 2 behavior)
+=====================================================================
+    DELETE /purchase-invoices/:id      DELETE /sales-invoices/:id
+  Same request, same response ({ "message": "... invoice deleted successfully",
+  "data": null }), same 409 when the invoice is not DRAFT. What changed is the
+  quotation the invoice was converted from (if any):
+
+  BEFORE: the quotation stayed CONVERTED and pointed to the deleted invoice
+          (GET /purchase-invoices/<convertedToInvoiceId> -> 404), and it could
+          never be converted again.
+  AFTER:  in the same transaction the quotation goes back to ACCEPTED:
+            GET /purchase-quotations/:id (or /sales-quotations/:id)
+            -> "status": "ACCEPTED", "convertedToInvoiceId": null
+          so the "تحويل لفاتورة" (Convert) button shows again, and a new
+          convert makes a NEW invoice with a NEW number (PI-... / SI-...).
+
+  CANCEL of a POSTED invoice does NOT change the quotation: it stays CONVERTED
+  and its "فتح الفاتورة" link opens the CANCELLED invoice (history kept).
+
+  What to do in the UI: after deleting an invoice that has
+  "convertedFromQuotation", reload that quotation (or invalidate its cache) so
+  it shows ACCEPTED. Suggested confirm text on Delete for such an invoice:
+    سيتم حذف الفاتورة وإرجاع عرض السعر <code> إلى حالة "مقبول" ليمكن تحويله مرة أخرى

@@ -454,6 +454,8 @@ Errors:
   ACCEPTED مقبول      POST /:id/convert-to-invoice, DELETE /:id       تحويل لفاتورة، حذف                   read only
   REJECTED مرفوض      DELETE /:id                                     حذف                                 read only
   CONVERTED تم التحويل (nothing)                                      "فتح الفاتورة" (convertedToInvoiceId) read only, can't be deleted
+  CONVERTED goes back to ACCEPTED (convertedToInvoiceId null) only when its DRAFT
+  invoice is deleted; then the Convert button (تحويل لفاتورة) shows again.
   isExpired = true when validUntil has passed: show a "منتهي" badge (it does not block anything).
 
 6.2 Purchase invoice (فاتورة شراء) - DocumentStatus
@@ -485,6 +487,11 @@ Arabic labels above.
     convertedFromQuotation { id, code }. Show both as links.
   - The invoice is a normal DRAFT: edit payment, supplier invoice number,
     expiry dates... before posting.
+  - DELETE of that DRAFT invoice frees the quotation (same transaction): it
+    goes back to ACCEPTED, convertedToInvoiceId = null, and can be converted
+    again (a new PI number).
+  - CANCEL of the POSTED invoice does NOT: the quotation stays CONVERTED and
+    still points to the cancelled invoice (the history is kept).
 
 7.2 Invoice -> Returns
   - GET /purchase-invoices/:id lists purchaseReturns [{ id, code, returnDate, status, netTotal }].

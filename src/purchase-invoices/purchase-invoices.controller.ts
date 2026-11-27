@@ -61,8 +61,8 @@ export class PurchaseInvoicesController {
 
   @Delete(':id')
   @Roles(Role.SUPERADMIN)
-  remove(@Param('id') id: string) {
-    return this.purchaseInvoicesService.remove(id);
+  remove(@Param('id') id: string, @CurrentUser('sub') userId: string) {
+    return this.purchaseInvoicesService.remove(id, userId);
   }
 
   @Post(':id/post')

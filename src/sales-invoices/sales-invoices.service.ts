@@ -9,6 +9,7 @@ import {
   DocumentStatus,
   ItemType,
   PaymentType,
+  QuotationStatus,
   StockMovementType,
 } from '../../generated/prisma/enums.js';
 import { NumberingService } from '../numbering/numbering.service';
@@ -546,18 +547,35 @@ export class SalesInvoicesService {
     return ok('Sales invoice updated successfully', await this.getDetail(id));
   }
 
-  /** DELETE /sales-invoices/:id: soft delete, DRAFT only. */
-  async remove(id: string) {
+  /**
+   * DELETE /sales-invoices/:id: soft delete, DRAFT only. In ONE transaction:
+   * 1. DRAFT -> deleted with a conditional update (0 rows = not DRAFT -> 409).
+   * 2. If the invoice came from a quotation (convert-to-invoice), that
+   *    quotation goes back to ACCEPTED with convertedToInvoiceId = null, so
+   *    it can be converted again. (Cancel of a POSTED invoice does NOT do
+   *    this: the quotation stays CONVERTED and keeps the link.)
+   */
+  async remove(id: string, userId: string) {
     await this.getActive(id);
-    const deleted = await this.prisma.salesInvoice.updateMany({
-      where: { id, deletedAt: null, status: DocumentStatus.DRAFT },
-      data: { deletedAt: new Date() },
+    await this.prisma.$transaction(async (tx) => {
+      const deleted = await tx.salesInvoice.updateMany({
+        where: { id, deletedAt: null, status: DocumentStatus.DRAFT },
+        data: { deletedAt: new Date() },
+      });
+      if (deleted.count === 0) {
+        throw invalidStatus(
+          'Only a DRAFT invoice can be deleted (cancel a POSTED invoice instead)',
+        );
+      }
+      await tx.salesQuotation.updateMany({
+        where: { convertedToInvoiceId: id },
+        data: {
+          status: QuotationStatus.ACCEPTED,
+          convertedToInvoiceId: null,
+          modifiedBy: userId,
+        },
+      });
     });
-    if (deleted.count === 0) {
-      throw invalidStatus(
-        'Only a DRAFT invoice can be deleted (cancel a POSTED invoice instead)',
-      );
-    }
     return ok('Sales invoice deleted successfully', null);
   }
 
