@@ -180,7 +180,8 @@ Host: localhost   Port: 5433   User: erp   Password: erp_password   Database: er
 > **Frontend, read in this order:**
 > 1. [`doc/FRONTEND_WEEK3_READ_FIRST.txt`](doc/FRONTEND_WEEK3_READ_FIRST.txt): what is new / changed in Week 3 (updated with every Week 3 task)
 > 2. [`doc/week3/00-overview.txt`](doc/week3/00-overview.txt): the Week 3 story, decisions, rules and modules
-> 3. [`doc/week2/week2flow.txt`](doc/week2/week2flow.txt): the whole Week 2 flow (purchasing, stock, item card) in one file
+> 3. [`doc/week3/week3flow.txt`](doc/week3/week3flow.txt): the whole Week 3 flow (sales, returns, transfers, stock counts) in one file
+> 4. [`doc/week2/week2flow.txt`](doc/week2/week2flow.txt): the whole Week 2 flow (purchasing, stock, item card) in one file
 
 The docs are in [`doc/`](doc/), organized by week, with one `.txt` file per module. Start with
 [`doc/week1/00-overview.txt`](doc/week1/00-overview.txt) (login, general rules, errors, every Week 1 module),
@@ -189,7 +190,7 @@ The docs are in [`doc/`](doc/), organized by week, with one `.txt` file per modu
 
 Every error response has a stable `code` (e.g. `ALREADY_EXISTS`, `NOT_FOUND`) and a `field`. The frontend translates errors with these, not with the English `message`.
 
-`requests.http` has ready-to-run sample requests (VS Code REST Client / JetBrains HTTP client). Its section **"WEEK 2 - THE BIG TEST"** runs the whole purchasing flow in 16 requests on an empty database (step 6 above), from a quotation to the item card.
+`requests.http` has ready-to-run sample requests (VS Code REST Client / JetBrains HTTP client). Its section **"WEEK 2 - THE BIG TEST"** runs the whole purchasing flow in 16 requests on an empty database (step 6 above), from a quotation to the item card (Maadi ends at 218 brushes @ 10.6818). Right after it, **"WEEK 3 - THE BIG TEST"** (W3-0 ... W3-22) continues on the same data with the sales flow, a return, a transfer and a stock count (Maadi ends at 145, Nasr City at 24). Then "WEEK 2 - MORE EXAMPLES" and "WEEK 3 - MORE EXAMPLES" show lists, filters, errors and cancels.
 
 ---
 

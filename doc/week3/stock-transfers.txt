@@ -59,7 +59,7 @@ The brush example (Week 3 story)
   Transfer 2 cartons Maadi -> Nasr City -> ST-2026-000001 (DRAFT, no change)
   POST -> 24 brushes leave Maadi at 10.6818 and enter Nasr City at 10.6818:
      line unitCost 10.6818, totalCost 256.36 (24 x 10.6818)
-     Maadi -24 (in the story 170 -> 146; in requests.http 218 -> 194), Nasr City 0 -> 24
+     Maadi 170 -> 146 (in the story, after the sale and the return), Nasr City 0 -> 24
   The same warehouse in "from" and "to" -> 400 (field toWarehouseId)
   A SERVICE product -> 400 (field lines.0.productId)
   CANCEL -> Nasr City 24 -> 0, Maadi +24 at 10.6818 (back to where it was)
@@ -67,8 +67,8 @@ The brush example (Week 3 story)
 
   Item card of Maadi (GET /stock-movements/item-card?productId=<brush>&warehouseId=<Maadi>):
      type                 quantity  unitCost  totalCost  balanceAfter  avgCostAfter  sourceCode
-     TRANSFER_OUT         -24       10.6818   -256.36    194           10.6818       ST-2026-000001
-     TRANSFER_OUT_CANCEL  +24       10.6818   256.36     218           10.6818       ST-2026-000001  (after cancel)
+     TRANSFER_OUT         -24       10.6818   -256.36    146           10.6818       ST-2026-000001
+     TRANSFER_OUT_CANCEL  +24       10.6818   256.36     170           10.6818       ST-2026-000001  (after cancel)
   Item card of Nasr City:
      type                 quantity  unitCost  totalCost  balanceAfter  avgCostAfter  sourceCode
      TRANSFER_IN          +24       10.6818   256.36     24            10.6818       ST-2026-000001

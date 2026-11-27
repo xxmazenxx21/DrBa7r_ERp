@@ -1,0 +1,1041 @@
+DrBa7r ERP - WEEK 3 FLOW (sales + stock control), start to finish
+=================================================================
+
+This file is SELF-CONTAINED: you can understand and build the whole Week 3
+frontend from it alone. Every term has its Arabic screen label next to it,
+e.g. Post (ترحيل). Every request, field, status rule and error below was
+checked against the backend code, and every number in section 5 comes from a
+real run of requests.http ("WEEK 3 - THE BIG TEST", W3-0 ... W3-22) on an
+empty database.
+
+Two readers:
+  - the frontend developer (paste this file into a Claude chat and ask), and
+  - Claude Code on the frontend repo (build the screens module by module from
+    section 11, using sections 5-10 for the exact requests, fields and errors).
+
+Backend: run it locally with Docker (git pull origin main, then
+docker compose up -d --build). Base URL: http://localhost:3000
+Login: POST /auth/login { "username": "admin", "password": "admin123" }
+-> data.access_token. Send it on EVERY request:  Authorization: Bearer <token>
+Only SUPERADMIN users can call the API for now (any other role gets 403).
+
+General API rules (they apply to everything below):
+  - Every success response is   { "message": "...", "data": ... }
+  - Every error response is     { "statusCode", "message", "error", "code", "field" }
+    Translate errors with "code" (+ "field"), never by reading "message".
+    "message" is a string, or an ARRAY of strings for validation errors.
+  - Numbers are SENT as JSON numbers and RETURNED as STRINGS ("974.7", "10.6818").
+    Use Number(value) before doing any math or comparing. Trailing zeros are
+    not returned: 974.70 comes back as "974.7", 119.70 as "119.7".
+  - Dates are SENT as "YYYY-MM-DD" and RETURNED as "YYYY-MM-DDT00:00:00.000Z":
+    show the first 10 characters.
+  - Unknown fields in a body or query string -> 400 "property X should not exist".
+  - Delete is always a SOFT delete (the row is hidden, kept in the database).
+  - In PATCH, a field not sent = unchanged; null CLEARS an optional text/date field
+    (e.g. notes, validUntil, dueDate, reason); null on a required field -> 400.
+  - "N" in a field name like "lines.N.quantity" is the line index, starting at 0:
+    highlight row N+1 of the lines table.
+  - Week 2 (purchasing, item card, units, currencies) is in doc/week2/week2flow.txt.
+    Week 3 uses it as it is; the changes to old screens are in section 12.
+
+
+=====================================================================
+1. WHAT WEEK 3 IS
+=====================================================================
+Week 3 adds SALES (المبيعات) and STOCK CONTROL between warehouses (مراقبة المخزون):
+  - three sales documents: quotation (عرض سعر بيع) -> invoice (فاتورة بيع)
+    -> return (مرتجع بيع). They are the MIRROR of the Week 2 purchase
+    documents, but the stock goes the OTHER way: a sale takes goods OUT,
+    a sales return brings them back IN,
+  - stock transfers (تحويل مخزني): goods move from one warehouse to another,
+  - stock counts (جرد): the shelves are counted and the stock is set to what
+    was counted (an adjustment for the difference).
+The server computes every total, every cost and every stock change; the
+frontend sends quantities, prices and percents and shows what the server returns.
+
+The brush story (قصة الفرشة) - used everywhere in this file. It starts where
+Week 2 ended:
+  0. The Maadi warehouse (مخزن المعادي, فرع المعادي) has 218 brushes (فرشة)
+     at an average cost of 10.6818. A carton (كرتونة) = 12 brushes.
+  1. Customer "صيدلية الشفاء" gets a quotation: 5 cartons x 180, discount 5%,
+     tax 14%:  subTotal 900 - discount 45 + tax 119.70 = netTotal 974.70
+  2. It is accepted and converted into a CREDIT invoice (آجل); the customer
+     pays 400 now -> remaining 574.70.
+  3. We post the invoice: 60 brushes leave Maadi at 10.6818 each
+     -> cost of goods sold 640.91, gross profit 855 - 640.91 = 214.09, Maadi 158.
+  4. The customer returns 1 carton (تالف): 180 - 9 + 23.94 = netTotal 194.94.
+     Posted: 12 brushes come back at the SAME 10.6818 they left with -> Maadi 170.
+  5. We transfer 2 cartons Maadi -> Nasr City (مخزن مدينة نصر): Maadi 146, Nasr City 24.
+  6. A stock count in Maadi finds 145 brushes: an adjustment of -1 -> Maadi 145.
+
+    Maadi:     218 - 60 + 12 - 24 - 1 = 145   (9 movements on the item card)
+    Nasr City:   0 + 24              =  24   (1 movement)
+
+
+=====================================================================
+2. THE BIG PICTURE
+=====================================================================
+
+  SALES DOCUMENTS                                       stock effect
+  ------------------------------------------------------------------------
+  [Sales Quotation عرض سعر بيع]                         none (no effect at all)
+     DRAFT -> SENT -> ACCEPTED
+         |  convert-to-invoice (تحويل لفاتورة)
+         v
+  [Sales Invoice فاتورة بيع]  DRAFT                      none while DRAFT
+         |  Post (ترحيل)                                 -60  (SALE) at the current average;
+         |                                                    the cost is SAVED on the line
+         |  Cancel (إلغاء)                               +60  (SALE_CANCEL) at the SAME cost
+         v
+  [Sales Return مرتجع بيع]  DRAFT (always linked         none while DRAFT
+         |                  to a POSTED invoice)
+         |  Post (ترحيل)                                 +12  (SALE_RETURN) at the sale cost
+         |  Cancel (إلغاء)                               -12  (SALE_RETURN_CANCEL)
+         v
+  STOCK CONTROL
+  ------------------------------------------------------------------------
+  [Stock Transfer تحويل مخزني]  DRAFT                    none while DRAFT
+         |  Post (ترحيل)   ONE step                      -24 in "from" (TRANSFER_OUT)
+         |                                               +24 in "to"   (TRANSFER_IN), same cost
+         |  Cancel (إلغاء)                               +24 back in "from" (TRANSFER_OUT_CANCEL)
+         |                                               -24 out of "to"    (TRANSFER_IN_CANCEL)
+  [Stock Count جرد]  DRAFT (the server makes the lines)  none while DRAFT
+         |  type the counts (إدخال العد)                  none
+         |  Post (ترحيل)   FINAL, no cancel              ADJUSTMENT = counted - balance (-1)
+         v
+  [Item card كارت الصنف]  shows every movement above, per product + warehouse,
+                          in order, with the balance after each one
+
+  Setup with the Week 1 screens: a second branch + warehouse (فرع / مخزن
+  مدينة نصر) and a customer (عميل). Nothing else is new to set up.
+
+
+=====================================================================
+3. GLOSSARY
+=====================================================================
+  Document (مستند)            A paper with a number and a date: quotation, invoice,
+                              return, transfer, count.
+  Header / Lines (رأس / بنود)  ONE header row (customer, date, totals) + one line
+                              per product (product, unit, quantity, price).
+  Draft (مسودة)               Saved but has NO effect. Can be edited and deleted.
+  Post (ترحيل)                Final confirmation: the stock moves and the document is locked.
+  Cancel (إلغاء)              Reverses a posted document with an opposite stock movement.
+                              The document stays, marked CANCELLED (ملغي), read only.
+                              A stock count has NO cancel.
+  Customer (العميل)            Who we sell to (Week 1 screen, GET /customer).
+  Selling price (سعر البيع)    unitPrice: the price of ONE line unit (180 a carton). The
+                              user types it; suggest it from the product's retailPrice /
+                              wholesalePrice. No price level per customer.
+  Cost of goods sold          totalCost of a sales invoice: what the goods cost us
+  (تكلفة البضاعة المباعة)        (pieces x the average cost when they left).
+  Gross profit (مجمل الربح)    (subTotal - discountValue) x exchangeRate - totalCost.
+                              Shown on GET /sales-invoices/:id, never stored.
+  Unit cost (تكلفة القطعة)      stockUnitCost / unitCost: the cost of ONE piece, set by the
+                              server, never sent by the frontend.
+  Base unit / Factor          Stock is always counted in the product's PRIMARY unit
+  (الوحدة الأساسية / المعامل)    (piece قطعة). A carton with factor 12 = 12 pieces.
+                              baseQuantity = quantity x factor = pieces.
+  Returnable (المتبقي للإرجاع)  per invoice line: sold - already returned (POSTED returns).
+  Transfer (تحويل مخزني)        Goods from one warehouse (من مخزن) to another (إلى مخزن),
+                              in ONE step: no "in transit" (في الطريق).
+  Stock count (جرد)            Counting the shelves. systemQuantity (الكمية في السيستم) =
+                              what the system said when the count was opened;
+                              countedQuantity (الكمية الفعلية) = what was counted;
+                              difference (الفرق) = what posting changed.
+  Stock movement (حركة مخزن)   One line for every stock in (+) or out (-). Never edited
+                              or deleted. sourceType + sourceCode say which document made it.
+  Item card (كارت الصنف)        All movements of one product in one warehouse, in order,
+                              with the balance after each one.
+  Average cost (متوسط التكلفة)  The cost of one piece after mixing old and new stock
+                              (weighted average). Stock IN changes it; stock OUT does not.
+
+
+=====================================================================
+4. THE DECISIONS AND THE RULES OF THE WEEK (and what they mean for the UI)
+=====================================================================
+The 6 decisions (taken by the owner; they don't change without asking):
+  1. Stock transfer = ONE step. Posting takes the goods out of the source
+     warehouse and puts them into the destination in the same transaction.
+     UI: no "received" (استلام) button and no "in transit" status.
+  2. A sales return MUST be linked to a POSTED sales invoice (salesInvoiceId
+     required); the goods come back at the original sale cost.
+     UI: no "return without invoice" mode (unlike purchase returns).
+  3. A stock count goes DRAFT -> POSTED only. No cancel: a mistake is fixed
+     with a new count. UI: no Cancel button on counts; confirm before posting.
+  4. Sales price: the user sends unitPrice; the frontend suggests it from the
+     product. No price level per customer.
+  5. Selling below cost is allowed, with no warning (grossProfit may be negative).
+  6. creditLimit (الحد الائتماني) is NOT checked until Week 4.
+
+The 5 rules:
+  1. Stock is always in the PRIMARY unit (pieces), even when you sell in cartons.
+     UI: show quantities in the line's unit on documents (5 cartons), but show
+     stock / item card / stock count numbers in pieces (60, 146).
+  2. Only the server changes stock; every change is a stock movement.
+     UI: refresh stock screens after every post / cancel.
+  3. The server computes ALL totals and ALL costs.
+     UI: you may preview totals while typing, but always display the values
+     from the server response after saving. Never send totals, costs, codes,
+     statuses or user ids (400 "property X should not exist").
+  4. A POSTED document is never edited or deleted, only cancelled. Exception:
+     a stock count has no cancel.
+     UI: POSTED and CANCELLED documents are READ ONLY.
+  5. NEW: the cost of a sale never comes from the user. It comes from the
+     stock when the goods leave (the average cost at that moment) and is saved
+     on the line (stockUnitCost). Anything that comes back into stock (invoice
+     cancel, sales return, transfer cancel) comes back at the SAME cost it
+     left with, not at today's average.
+
+
+=====================================================================
+5. THE FULL FLOW, STEP BY STEP (the 22 steps of the big test)
+=====================================================================
+These are exactly the requests in requests.http, section
+"WEEK 3 - THE BIG TEST" (W3-0 ... W3-22). It runs right after
+"WEEK 2 - THE BIG TEST" (W2-0 ... W2-16) on the same database, which was
+EMPTY before W2-0 (docker compose down -v, then docker compose up -d --build).
+Starting point: Maadi has 218 brushes @ 10.6818 (the end of W2-16).
+Every document is dated 2026-11-27.
+Ids below are shown as <...Id>; take them from earlier responses (data.id).
+All requests need  Authorization: Bearer <token>  and
+Content-Type: application/json.
+
+---------------------------------------------------------------------
+STEP W3-0 - Login (تسجيل الدخول)
+---------------------------------------------------------------------
+  POST /auth/login
+  { "username": "admin", "password": "admin123" }
+Response 201: data.access_token (keep it), data.user { id, username, role: "SUPERADMIN" }
+Errors: 401 UNAUTHORIZED "Invalid credentials" -> "اسم المستخدم أو كلمة المرور غير صحيحة"
+
+---------------------------------------------------------------------
+STEP W3-1 - A second branch and its warehouse (فرع ومخزن مدينة نصر)
+---------------------------------------------------------------------
+Screens: Branches, Warehouses (Week 1).
+  POST /branch                          { "name": "فرع مدينة نصر", "address": "مدينة نصر" }
+  POST /inventory/branch/<nasrBranchId> { "name": "مخزن مدينة نصر", "address": "مدينة نصر" }
+Both 201. The warehouse: data = { id: <nasrId>, name, branchId, address, createdAt, updatedAt, deletedAt: null }
+Stock: no change (the new warehouse is empty).
+
+---------------------------------------------------------------------
+STEP W3-2 - The customer (العميل)
+---------------------------------------------------------------------
+Screen: Customers (Week 1) -> "إضافة عميل".
+  POST /customer
+  { "name": "صيدلية الشفاء" }
+Response 201 "customer created successfully":
+  data = { id: <customerId>, code: "CUS-616247" (random 6 digits), name, taxNumber: null,
+           commercialRecord: null, phone: null, address: null, creditLimit: "0",
+           openingBalance: "0", createdAt, updatedAt, deletedAt: null }
+
+---------------------------------------------------------------------
+STEP W3-3 - Sales quotation: 5 cartons x 180, discount 5%, tax 14% (عرض سعر بيع)
+---------------------------------------------------------------------
+Screen: Sales quotations (عروض أسعار البيع) -> "عرض جديد". Header: date
+(تاريخ العرض), valid until (صالح حتى), customer, branch, warehouse (optional),
+discount %, tax %, notes. Lines table: product, unit (dropdown from the
+product's units), quantity, unit price (سعر البيع), optional line discount.
+  POST /sales-quotations
+  {
+    "quotationDate": "2026-11-27",
+    "validUntil": "2026-12-31",
+    "customerId": "<customerId>",
+    "branchId": "<maadiBranchId>",
+    "warehouseId": "<maadiId>",
+    "discountPercent": 5,
+    "taxPercent": 14,
+    "lines": [
+      { "productId": "<brushId>", "itemUnitId": "<cartonId>", "quantity": 5, "unitPrice": 180 }
+    ]
+  }
+Response 201 "Sales quotation created successfully":
+  data = { id: <quotationId>, code: "SQ-2026-000001", quotationDate: "2026-11-27T00:00:00.000Z",
+           validUntil: "2026-12-31T00:00:00.000Z", status: "DRAFT", customerId, branchId,
+           warehouseId, subTotal: "900", discountPercent: "5", discountValue: "45",
+           taxPercent: "14", taxValue: "119.7", netTotal: "974.7", convertedToInvoiceId: null,
+           notes: null, createdBy, createdDate, modifiedBy: null, modifiedDate, deletedAt: null,
+           customer { id, code, name }, branch { id, code, name }, warehouse { id, name },
+           createdByUser { id, username }, modifiedByUser: null,
+           lines: [ { id, salesQuotationId, productId, itemUnitId, unitFactor: "12",
+                      quantity: "5", unitPrice: "180", discountPercent: null,
+                      discountValue: null, lineTotal: "900", notes: null,
+                      product { id, code, name: "فرشة", itemType: "STOCK" },
+                      itemUnit { id, code, name: "كرتونة" } } ],
+           isExpired: false }
+Stock: no change (a quotation never touches stock).
+Errors:
+  400 VALIDATION_FAILED field "lines" (no lines)                     -> "يجب إضافة بند واحد على الأقل"
+  400 VALIDATION_FAILED field "lines.N.quantity" (0, negative, > 4 decimals) -> "الكمية يجب أن تكون أكبر من صفر"
+  400 VALIDATION_FAILED field "lines.N.discountValue" "lines.N: send discountPercent or discountValue, not both"
+      -> "أدخل نسبة الخصم أو قيمة الخصم فقط، وليس الاثنين"
+  400 BAD_REQUEST field "lines.N.itemUnitId" "unit is not defined for this product"
+      -> "هذه الوحدة غير معرفة لهذا الصنف"
+  400 DOES_NOT_EXIST field "customerId" / "branchId" / "warehouseId" / "lines.N.productId"
+      ("customerId does not exist") -> "<الحقل> غير موجود أو محذوف"
+  400 BAD_REQUEST field "warehouseId" "warehouseId must belong to branchId"
+      -> "المخزن يجب أن يكون تابعًا لنفس الفرع"
+  400 BAD_REQUEST field "validUntil" "validUntil must be on or after quotationDate"
+      -> "تاريخ الصلاحية يجب أن يكون بعد تاريخ العرض"
+  400 BAD_REQUEST field "discountValue" / "lines.N.discountValue"
+      "discountValue must be between 0 and the amount it is taken from" -> "قيمة الخصم أكبر من المبلغ"
+
+---------------------------------------------------------------------
+STEP W3-4 - Send, then accept the quotation (مُرسل ثم مقبول)
+---------------------------------------------------------------------
+Screen: Quotation details. Buttons "إرسال" (DRAFT) then "قبول" (SENT).
+  PATCH /sales-quotations/<quotationId>/status   { "status": "SENT" }
+  PATCH /sales-quotations/<quotationId>/status   { "status": "ACCEPTED" }
+Response 200 "Sales quotation status updated successfully": data.status "SENT", then "ACCEPTED"
+(data = the full quotation object, as in W3-3).
+Stock: no change.
+Errors:
+  409 INVALID_STATUS field "status" (move not allowed), e.g. DRAFT -> ACCEPTED:
+    { "statusCode": 409, "message": "Can't change status from DRAFT to ACCEPTED (allowed: DRAFT -> SENT, SENT -> ACCEPTED or REJECTED)",
+      "error": "Conflict", "code": "INVALID_STATUS", "field": "status" }
+    -> "لا يمكن تنفيذ العملية في حالة المستند الحالية"
+  400 VALIDATION_FAILED field "status" "status must be one of the following values: SENT, ACCEPTED, REJECTED"
+
+---------------------------------------------------------------------
+STEP W3-5 - Convert the quotation into a CREDIT invoice (تحويل لفاتورة آجل)
+---------------------------------------------------------------------
+Screen: Quotation details (status ACCEPTED) -> button "تحويل لفاتورة" opens a
+small dialog: payment type (نقدي / آجل), invoice date, warehouse (pre-filled
+from the quotation; required only if the quotation has none). Then open the
+new invoice.
+  POST /sales-quotations/<quotationId>/convert-to-invoice
+  { "paymentType": "CREDIT", "invoiceDate": "2026-11-27" }
+Response 201 "Sales quotation converted to invoice successfully":
+  data.quotation: the quotation object, status "CONVERTED", convertedToInvoiceId = <invoiceId>
+  data.invoice:   the sales invoice object (see W3-7 for all its fields):
+                  code "SI-2026-000001", status "DRAFT", paymentType "CREDIT",
+                  currency { code "EGP" } (the default), exchangeRate "1", dueDate null,
+                  subTotal "900", discountPercent "5", discountValue "45", taxPercent "14",
+                  taxValue "119.7", netTotal "974.7", paidAmount "0", remainingAmount "974.7",
+                  totalCost "0", grossProfit null, salesReturns [],
+                  convertedFromQuotation { id: <quotationId>, code: "SQ-2026-000001" },
+                  lines[0] = { quantity "5", unitFactor "12", baseQuantity "60",
+                               unitPrice "180", lineTotal "900", stockUnitCost "0", lineCost "0" }
+Stock: no change (the invoice is a DRAFT).
+Errors:
+  409 INVALID_STATUS field "status" (not ACCEPTED, or already converted):
+    "This quotation is CONVERTED: only an ACCEPTED quotation can be converted to an invoice"
+    -> "لا يمكن تحويل عرض السعر لفاتورة إلا إذا كان مقبولًا ولم يتم تحويله من قبل"
+  400 VALIDATION_FAILED field "warehouseId" ["warehouseId is required: the quotation has no warehouse"]
+    -> "اختر المخزن: عرض السعر ليس له مخزن"
+  400 BAD_REQUEST field "warehouseId" "warehouseId must belong to branchId"
+    -> "المخزن يجب أن يكون تابعًا لنفس فرع العرض"
+  400 BAD_REQUEST field "currencyId" "There is no default currency: create one (POST /currency) or send currencyId"
+    -> "لا توجد عملة أساسية، أضف عملة أولًا"
+  400 DOES_NOT_EXIST field "lines.N.productId" (a product was deleted since the quotation)
+    -> "الصنف في البند رقم N+1 لم يعد موجودًا"
+  When a convert fails nothing is saved: the quotation stays ACCEPTED and no SI number is used.
+
+---------------------------------------------------------------------
+STEP W3-6 - The customer pays 400 now (المدفوع)
+---------------------------------------------------------------------
+Screen: Invoice form (DRAFT) -> field "المدفوع" = 400 -> "حفظ".
+  PATCH /sales-invoices/<invoiceId>
+  { "paidAmount": 400 }
+Response 200 "Sales invoice updated successfully":
+  data.paidAmount "400", remainingAmount "574.7" (المتبقي على العميل), status "DRAFT"
+Stock: no change.
+Errors:
+  400 BAD_REQUEST field "paidAmount" "paidAmount must not be more than netTotal (974.7)"
+    -> "المدفوع أكبر من صافي الفاتورة"
+  409 INVALID_STATUS field "status" "This invoice is POSTED: only a DRAFT invoice can be edited"
+  (CASH invoices: paidAmount is always = netTotal, whatever you send.)
+
+---------------------------------------------------------------------
+STEP W3-7 - Post the invoice (ترحيل الفاتورة): the goods LEAVE
+---------------------------------------------------------------------
+Screen: Invoice details (DRAFT) -> button "ترحيل" (ask for confirmation:
+"بعد الترحيل لا يمكن تعديل الفاتورة").
+  POST /sales-invoices/<invoiceId>/post          (no body)
+Response 201 "Sales invoice posted successfully":
+  data = { id, code: "SI-2026-000001", invoiceDate, dueDate: null, status: "POSTED",
+           paymentType: "CREDIT", customerId, branchId, warehouseId, currencyId,
+           exchangeRate: "1", subTotal: "900", discountPercent: "5", discountValue: "45",
+           taxPercent: "14", taxValue: "119.7", netTotal: "974.7", paidAmount: "400",
+           remainingAmount: "574.7", totalCost: "640.91", postedDate, postedBy,
+           cancelledDate: null, cancelledBy: null, notes: null,
+           createdBy, createdDate, modifiedBy, modifiedDate, deletedAt: null,
+           customer { id, code, name }, branch { id, code, name }, warehouse { id, name },
+           currency { id, code: "EGP", name, symbol }, createdByUser, modifiedByUser,
+           postedByUser { id, username }, cancelledByUser: null,
+           convertedFromQuotation { id, code: "SQ-2026-000001" }, salesReturns: [],
+           lines: [ { id: <invoiceLineId>, salesInvoiceId, productId, itemUnitId,
+                      unitFactor: "12", quantity: "5", baseQuantity: "60", unitPrice: "180",
+                      discountPercent: null, discountValue: null, lineTotal: "900",
+                      stockUnitCost: "10.6818", lineCost: "640.91", notes: null,
+                      product { id, code, name, itemType }, itemUnit { id, code, name } } ],
+           grossProfit: "214.09" }
+  grossProfit = (900 - 45) x 1 - 640.91 = 214.09
+Stock / item card (Maadi): - SALE (بيع) -60 at 10.6818 (totalCost "-640.91"),
+  balance 158, average still 10.6818, sourceType "SI", sourceCode "SI-2026-000001".
+Errors:
+  409 INVALID_STATUS field "status" "This invoice is POSTED: only a DRAFT invoice can be posted"
+      (a double click can never post twice; hide "ترحيل" when not DRAFT)
+  400 INSUFFICIENT_STOCK field "lines.N.quantity" (see W3-9)
+  400 DOES_NOT_EXIST field "lines.N.productId" / "warehouseId" (deleted after the draft was saved)
+
+---------------------------------------------------------------------
+STEP W3-8 - A CASH invoice of 20 cartons (فاتورة نقدي)
+---------------------------------------------------------------------
+Screen: Sales invoices (فواتير البيع) -> "فاتورة جديدة".
+  POST /sales-invoices
+  {
+    "invoiceDate": "2026-11-27",
+    "paymentType": "CASH",
+    "customerId": "<customerId>",
+    "branchId": "<maadiBranchId>",
+    "warehouseId": "<maadiId>",
+    "lines": [
+      { "productId": "<brushId>", "itemUnitId": "<cartonId>", "quantity": 20, "unitPrice": 180 }
+    ]
+  }
+  (optional: dueDate, currencyId + exchangeRate, discountPercent / discountValue,
+   taxPercent, paidAmount (CREDIT only), notes; line discountPercent OR discountValue, notes)
+Response 201 "Sales invoice created successfully": code "SI-2026-000002", status "DRAFT",
+  subTotal "3600", netTotal "3600", paidAmount "3600" (CASH = paid in full),
+  remainingAmount "0", totalCost "0", grossProfit null, convertedFromQuotation null.
+Stock: no change (DRAFT). The stock is checked only when posting.
+Errors: the same as W3-3, plus
+  400 BAD_REQUEST field "dueDate" "dueDate must be on or after invoiceDate"
+    -> "تاريخ الاستحقاق يجب أن يكون بعد تاريخ الفاتورة"
+  400 BAD_REQUEST field "exchangeRate" "exchangeRate is required for a currency that is not the default"
+      / "exchangeRate must be 1 for the default currency"
+    -> "سعر الصرف مطلوب للعملة غير الأساسية (والعملة الأساسية سعرها 1)"
+  400 VALIDATION_FAILED "property stockUnitCost should not exist" (any cost / total sent)
+
+---------------------------------------------------------------------
+STEP W3-9 - Post it: not enough brushes (الكمية غير كافية)
+---------------------------------------------------------------------
+  POST /sales-invoices/<bigInvoiceId>/post
+Response 400:
+  { "statusCode": 400, "message": "Insufficient stock: available 158, requested 240",
+    "error": "Bad Request", "code": "INSUFFICIENT_STOCK", "field": "lines.0.quantity" }
+  -> "الكمية المتاحة في المخزن غير كافية" (highlight line 1; the numbers are pieces)
+Stock: no change; the invoice stays DRAFT (all or nothing).
+
+---------------------------------------------------------------------
+STEP W3-10 - Delete the DRAFT invoice (حذف)
+---------------------------------------------------------------------
+  DELETE /sales-invoices/<bigInvoiceId>
+Response 200 "Sales invoice deleted successfully", data null. Maadi still 158.
+Its number SI-2026-000002 is never reused (the next invoice is SI-2026-000003).
+Errors:
+  409 INVALID_STATUS field "status" "Only a DRAFT invoice can be deleted (cancel a POSTED invoice instead)"
+(If the invoice came from a quotation, deleting it puts the quotation back
+ to ACCEPTED, see section 7.1.)
+
+---------------------------------------------------------------------
+STEP W3-11 - Return 6 cartons: more than sold (مرتجع أكبر من المباع)
+---------------------------------------------------------------------
+Screen: Invoice details (POSTED) -> button "عمل مرتجع", or Sales returns
+(مرتجعات البيع) -> "مرتجع جديد" -> pick a POSTED invoice. The screen loads
+GET /sales-invoices/<invoiceId>/returnable and shows each invoice line with
+"المباع / المرتجع / المتبقي"; the user types the quantity (in the line's unit).
+  POST /sales-returns
+  {
+    "returnDate": "2026-11-27",
+    "salesInvoiceId": "<invoiceId>",
+    "lines": [ { "salesInvoiceLineId": "<invoiceLineId>", "quantity": 6 } ]
+  }
+  (<invoiceLineId> = invoice data.lines[i].id, or returnable data.lines[i].lineId)
+Response 400:
+  { "statusCode": 400, "message": "Only 5 can still be returned on this invoice line (sold 5, already returned 0)",
+    "error": "Bad Request", "code": "QUANTITY_EXCEEDED", "field": "lines.0.quantity" }
+  -> "الكمية المرتجعة أكبر من المتبقي من الفاتورة (المتبقي X)"
+Nothing is saved.
+
+---------------------------------------------------------------------
+STEP W3-12 - Return 1 carton (مرتجع بيع مربوط بالفاتورة)
+---------------------------------------------------------------------
+  POST /sales-returns
+  {
+    "returnDate": "2026-11-27",
+    "reason": "تالف",
+    "salesInvoiceId": "<invoiceId>",
+    "lines": [ { "salesInvoiceLineId": "<invoiceLineId>", "quantity": 1 } ]
+  }
+  (optional: refundAmount (المبلغ المردود للعميل, 0..netTotal, default 0), notes,
+   customerId / branchId / warehouseId (must equal the invoice's), line notes)
+Response 201 "Sales return created successfully":
+  data = { id: <returnId>, code: "SR-2026-000001", returnDate, status: "DRAFT",
+           reason: "تالف", salesInvoiceId, customerId, branchId, warehouseId
+           (all three = the invoice's), subTotal: "180", discountPercent: "5",
+           discountValue: "9", taxPercent: "14", taxValue: "23.94", netTotal: "194.94",
+           refundAmount: "0", totalCost: "0", postedDate: null, postedBy: null,
+           cancelledDate: null, cancelledBy: null, notes: null, created..., modified...,
+           customer, branch, warehouse, createdByUser, modifiedByUser, postedByUser,
+           cancelledByUser,
+           salesInvoice { id, code: "SI-2026-000001", invoiceDate, status: "POSTED" },
+           lines: [ { id, salesReturnId, salesInvoiceLineId, productId, itemUnitId,
+                      unitFactor: "12", quantity: "1", baseQuantity: "12",
+                      unitPrice: "180", lineTotal: "180", stockUnitCost: "10.6818",
+                      lineCost: "0", notes: null, product, itemUnit,
+                      salesInvoiceLine { id, quantity: "5", unitPrice: "180",
+                                         lineTotal: "900", stockUnitCost: "10.6818" } } ] }
+  Everything comes from the invoice: product, unit, price (lineTotal / quantity),
+  the discount share (180 x 45 / 900 = 9) and the tax (14% of 171 = 23.94);
+  stockUnitCost = the invoice line's (the cost the goods left with).
+Stock: no change (DRAFT).
+Errors:
+  400 QUANTITY_EXCEEDED field "lines.N.quantity" (W3-11)
+  400 BAD_REQUEST field "salesInvoiceId" "salesInvoiceId must be a POSTED invoice (this one is DRAFT)"
+    -> "يجب اختيار فاتورة بيع مُرحّلة"
+  400 DOES_NOT_EXIST field "salesInvoiceId" "salesInvoiceId does not exist" -> "فاتورة البيع غير موجودة أو محذوفة"
+  400 BAD_REQUEST field "lines.N.salesInvoiceLineId" "salesInvoiceLineId is not a line of salesInvoiceId"
+    -> "هذا البند ليس من بنود الفاتورة المختارة"
+  400 BAD_REQUEST field "customerId" / "branchId" / "warehouseId" "customerId must be the invoice's customer"
+    -> "العميل والفرع والمخزن يجب أن يكونوا نفس بيانات الفاتورة"
+  400 BAD_REQUEST field "refundAmount" "refundAmount must not be more than netTotal (194.94)"
+    -> "المبلغ المردود أكبر من صافي المرتجع"
+  400 VALIDATION_FAILED "property discountPercent should not exist" (discount / tax / totals /
+    costs are never sent on a sales return; productId / itemUnitId / unitPrice in a line
+    are accepted and IGNORED)
+
+---------------------------------------------------------------------
+STEP W3-13 - Post the return (ترحيل المرتجع): the goods COME BACK
+---------------------------------------------------------------------
+Screen: Return details (DRAFT) -> button "ترحيل".
+  POST /sales-returns/<returnId>/post            (no body)
+Response 201 "Sales return posted successfully": data.status "POSTED",
+  totalCost "128.18" (تكلفة البضاعة الراجعة), lines[0].lineCost "128.18", postedDate, postedBy.
+Stock / item card (Maadi): + SALE_RETURN (مرتجع بيع) +12 at 10.6818 (the invoice
+  line's stockUnitCost, NOT today's average; totalCost "128.18"), balance 170,
+  sourceType "SR", sourceCode "SR-2026-000001".
+GET /sales-invoices/<invoiceId>/returnable now: quantity "5", returnedQuantity "1", remainingQuantity "4".
+Errors:
+  409 INVALID_STATUS field "status" "This return is POSTED: only a DRAFT return can be posted"
+  400 QUANTITY_EXCEEDED field "lines.N.quantity" (another return of the same line was posted first)
+  400 BAD_REQUEST field "salesInvoiceId" (the invoice was cancelled meanwhile)
+
+---------------------------------------------------------------------
+STEP W3-14 - Try to cancel the invoice (إلغاء الفاتورة)
+---------------------------------------------------------------------
+Screen: Invoice details (POSTED) -> button "إلغاء".
+  POST /sales-invoices/<invoiceId>/cancel        (no body)
+Response 400:
+  { "statusCode": 400, "message": "This invoice has 1 POSTED sales return(s): cancel the return(s) first",
+    "error": "Bad Request", "code": "BAD_REQUEST", "field": "status" }
+  -> "لا يمكن إلغاء الفاتورة لأن عليها مرتجع مُرحّل، ألغِ المرتجع أولًا"
+Stock: no change. (Without a POSTED return, cancel gives 201 "Sales invoice cancelled
+successfully": status "CANCELLED" and SALE_CANCEL +60 at 10.6818 - the cost they left with.)
+
+---------------------------------------------------------------------
+STEP W3-15 - Transfer 2 cartons Maadi -> Nasr City (تحويل مخزني)
+---------------------------------------------------------------------
+Screen: Stock transfers (التحويلات المخزنية) -> "تحويل جديد". Header: date
+(تاريخ التحويل), from warehouse (من مخزن), to warehouse (إلى مخزن), notes.
+Lines: product (STOCK only), unit, quantity. NO prices, NO costs.
+  POST /stock-transfers
+  {
+    "transferDate": "2026-11-27",
+    "fromWarehouseId": "<maadiId>",
+    "toWarehouseId": "<nasrId>",
+    "lines": [ { "productId": "<brushId>", "itemUnitId": "<cartonId>", "quantity": 2 } ]
+  }
+Response 201 "Stock transfer created successfully":
+  data = { id: <transferId>, code: "ST-2026-000001", transferDate, status: "DRAFT",
+           fromWarehouseId, toWarehouseId, totalCost: "0", postedDate: null, postedBy: null,
+           cancelledDate: null, cancelledBy: null, notes: null, created..., modified...,
+           deletedAt: null,
+           fromWarehouse { id, name: "مخزن المعادي", branch { id, code, name: "فرع المعادي" } },
+           toWarehouse   { id, name: "مخزن مدينة نصر", branch { id, code, name: "فرع مدينة نصر" } },
+           createdByUser, modifiedByUser, postedByUser, cancelledByUser,
+           lines: [ { id, stockTransferId, productId, itemUnitId, unitFactor: "12",
+                      quantity: "2", baseQuantity: "24", unitCost: "0", notes: null,
+                      product, itemUnit } ] }
+Stock: no change (DRAFT).
+Errors:
+  400 BAD_REQUEST field "toWarehouseId" (W3-17)
+  400 DOES_NOT_EXIST field "fromWarehouseId" / "toWarehouseId" -> "المخزن غير موجود أو محذوف"
+  400 BAD_REQUEST field "lines.N.productId" "Service items (SERVICE) have no stock"
+    -> "لا يمكن تحويل صنف خدمي (ليس له مخزون)"
+  400 BAD_REQUEST field "lines.N.itemUnitId" "unit is not defined for this product"
+  400 VALIDATION_FAILED "lines.0.property unitCost should not exist" (never send a cost)
+
+---------------------------------------------------------------------
+STEP W3-16 - Post the transfer (ترحيل التحويل): out of one, into the other
+---------------------------------------------------------------------
+  POST /stock-transfers/<transferId>/post        (no body)
+Response 201 "Stock transfer posted successfully": data.status "POSTED",
+  totalCost "256.36" (قيمة التحويل = 24 x 10.6818), lines[0].unitCost "10.6818".
+Stock / item cards (both in the same transaction):
+  Maadi:     - TRANSFER_OUT (تحويل صادر) -24 at 10.6818, balance 146
+  Nasr City: + TRANSFER_IN  (تحويل وارد) +24 at 10.6818 (the SOURCE average), balance 24
+  both with sourceType "ST", sourceCode "ST-2026-000001".
+Errors:
+  409 INVALID_STATUS field "status" "This transfer is POSTED: only a DRAFT transfer can be posted"
+  400 INSUFFICIENT_STOCK field "lines.N.quantity" "Insufficient stock: available X, requested Y"
+    (the source doesn't have enough) -> "الكمية المتاحة في المخزن غير كافية"; nothing moves.
+
+---------------------------------------------------------------------
+STEP W3-17 - The same warehouse in "from" and "to"
+---------------------------------------------------------------------
+  POST /stock-transfers   { ..., "fromWarehouseId": "<maadiId>", "toWarehouseId": "<maadiId>", ... }
+Response 400:
+  { "statusCode": 400, "message": "toWarehouseId must be different from fromWarehouseId",
+    "error": "Bad Request", "code": "BAD_REQUEST", "field": "toWarehouseId" }
+  -> "المخزن المحوَّل إليه يجب أن يكون مختلفًا عن المخزن المحوَّل منه"
+  (UI: hide the chosen "from" warehouse in the "to" dropdown.)
+
+---------------------------------------------------------------------
+STEP W3-18 - Open a stock count on Maadi (فتح جرد)
+---------------------------------------------------------------------
+Screen: Stock counts (الجرد) -> "جرد جديد": pick the date and the warehouse.
+Don't send lines: the SERVER makes them.
+  POST /stock-counts
+  { "countDate": "2026-11-27", "warehouseId": "<maadiId>" }       (optional: "notes")
+Response 201 "Stock count created successfully":
+  data = { id: <countId>, code: "SC-2026-000001", countDate, status: "DRAFT", warehouseId,
+           postedDate: null, postedBy: null, notes: null, createdBy, createdDate,
+           modifiedBy: null, modifiedDate, deletedAt: null,
+           warehouse { id, name: "مخزن المعادي", branch { id, code, name } },
+           createdByUser, modifiedByUser: null, postedByUser: null,
+           lines: [ { id: <countLineId>, stockCountId, productId, systemQuantity: "146",
+                      countedQuantity: null, difference: null, unitCost: null,
+                      product { id, code, name: "فرشة" } } ] }
+  One line per active STOCK product that has a stock row in the warehouse,
+  in product-code order (here only the brush). systemQuantity is for display.
+Stock: no change.
+Errors:
+  400 BAD_REQUEST field "warehouseId" "The warehouse has no products to count"
+    -> "لا توجد أصناف في هذا المخزن للجرد"
+  400 DOES_NOT_EXIST field "warehouseId" -> "المخزن غير موجود أو محذوف"
+  400 VALIDATION_FAILED "property lines should not exist" (never send lines here)
+
+---------------------------------------------------------------------
+STEP W3-19 - Type the count: brush = 145 (إدخال العد)
+---------------------------------------------------------------------
+Screen: the count sheet (شاشة الجرد): columns كود الصنف | الصنف |
+الكمية في السيستم | الكمية الفعلية (input, in PIECES) | الفرق. "حفظ العد".
+  PATCH /stock-counts/<countId>/lines
+  { "lines": [ { "lineId": "<countLineId>", "countedQuantity": 145 } ] }
+Response 200 "Stock count lines updated successfully": the count object,
+  lines[0].countedQuantity "145" (difference still null: it is set by posting).
+Send only the changed lines; "countedQuantity": null empties a cell. Save as
+often as you want. Stock: no change.
+Errors:
+  400 BAD_REQUEST field "lines.N.lineId" "lineId is not a line of this stock count"
+    -> "هذا البند ليس من بنود هذا الجرد" (nothing is saved)
+  400 VALIDATION_FAILED field "lines.N.countedQuantity" (negative, > 4 decimals, missing)
+    -> "الكمية الفعلية يجب أن تكون صفر أو أكثر"
+  409 INVALID_STATUS field "status" "This stock count is POSTED: only a DRAFT stock count can be counted"
+
+---------------------------------------------------------------------
+STEP W3-20 - Post the count (ترحيل الجرد) - FINAL
+---------------------------------------------------------------------
+Screen: count sheet -> "ترحيل" (confirm: "الترحيل نهائي ولا يمكن إلغاؤه").
+  POST /stock-counts/<countId>/post               (no body)
+Response 201 "Stock count posted successfully": data.status "POSTED",
+  lines[0] = { systemQuantity "146", countedQuantity "145", difference "-1", unitCost "10.6818" }
+Stock / item card (Maadi): - ADJUSTMENT (تسوية) -1 at 10.6818 (totalCost "-10.68"),
+  balance 145, reason "جرد SC-2026-000001", sourceType "SC", sourceCode "SC-2026-000001".
+  difference = countedQuantity - the balance AT POSTING (not systemQuantity);
+  difference 0 -> no movement; uncounted lines (null) are left alone.
+Errors:
+  400 BAD_REQUEST field "lines" "Count at least one line before posting"
+    -> "أدخل الكمية الفعلية لبند واحد على الأقل قبل الترحيل"
+  409 INVALID_STATUS field "status" "This stock count is POSTED: only a DRAFT stock count can be posted"
+  POST /stock-counts/<countId>/cancel -> 404 NOT_FOUND "Cannot POST /stock-counts/<id>/cancel"
+    (there is no cancel)
+
+---------------------------------------------------------------------
+STEP W3-21 - The item card of Maadi (كارت الصنف)
+---------------------------------------------------------------------
+Screen: Item card -> product "فرشة" + warehouse "مخزن المعادي".
+  GET /stock-movements/item-card?productId=<brushId>&warehouseId=<maadiId>
+Response 200 "Item card returned successfully":
+  data.product { id, code, name: "فرشة" }, data.warehouse { id, name },
+  data.quantity "145", data.avgCost "10.6818",
+  data.movements (OLDEST first):
+    type                    quantity  unitCost  totalCost  balanceAfter  sourceType  sourceCode       reason
+    OPENING                 100       10        1000       100           -           -                -
+    PURCHASE                120       11.25     1350       220           PI          PI-2026-000001   -
+    PURCHASE_RETURN         -24       10.6818   -256.36    196           PR          PR-2026-000001   -
+    PURCHASE_RETURN_CANCEL  24        10.6818   256.36     220           PR          PR-2026-000001   -
+    ADJUSTMENT              -2        10.6818   -21.36     218           -           -                جرد
+    SALE                    -60       10.6818   -640.91    158           SI          SI-2026-000001   -
+    SALE_RETURN             12        10.6818   128.18     170           SR          SR-2026-000001   -
+    TRANSFER_OUT            -24       10.6818   -256.36    146           ST          ST-2026-000001   -
+    ADJUSTMENT              -1        10.6818   -10.68     145           SC          SC-2026-000001   جرد SC-2026-000001
+  (avgCostAfter: 10 on the first row, 10.6818 on all the others)
+  Check: 100 + 120 - 24 + 24 - 2 - 60 + 12 - 24 - 1 = 145
+  Every Maadi movement after the purchase is at 10.6818 because nothing came
+  in at another cost. (If a purchase at another price came before the return,
+  the average would change, but the SALE_RETURN row would still be 10.6818.)
+Each movement also has: id, movementDate (when it was written = when the
+document was posted / cancelled, NOT the document date), productId, warehouseId,
+avgCostAfter, sourceId, sourceLineId, createdBy, createdDate, createdByUser { id, username }.
+
+---------------------------------------------------------------------
+STEP W3-22 - The item card of Nasr City
+---------------------------------------------------------------------
+  GET /stock-movements/item-card?productId=<brushId>&warehouseId=<nasrId>
+Response 200: data.quantity "24", data.avgCost "10.6818", ONE movement:
+    TRANSFER_IN             24        10.6818   256.36     24            ST          ST-2026-000001   -
+Errors (item card): 400 VALIDATION_FAILED (productId / warehouseId missing);
+  404 NOT_FOUND (unknown / deleted product or warehouse).
+
+
+=====================================================================
+6. STATE MACHINES (status -> actions -> buttons -> editable fields)
+=====================================================================
+6.1 Sales quotation (عرض سعر بيع) - QuotationStatus
+  status              allowed actions (API)                            buttons to show                    editable?
+  ------------------  -----------------------------------------------  ---------------------------------  ---------------------
+  DRAFT مسودة          PATCH /:id, DELETE /:id, PATCH /:id/status SENT   حفظ، حذف، إرسال                     everything (header + lines)
+  SENT مُرسل            PATCH /:id, DELETE /:id, /status ACCEPTED|REJECTED حفظ، حذف، قبول، رفض                everything (header + lines)
+  ACCEPTED مقبول        POST /:id/convert-to-invoice, DELETE /:id         تحويل لفاتورة، حذف                   read only
+  REJECTED مرفوض        DELETE /:id                                       حذف                                 read only
+  CONVERTED تم التحويل  (nothing)                                         "فتح الفاتورة" (convertedToInvoiceId) read only, can't be deleted
+  CONVERTED goes back to ACCEPTED (convertedToInvoiceId null) only when its DRAFT
+  invoice is deleted; then the Convert button (تحويل لفاتورة) shows again.
+  isExpired = true when validUntil has passed: show a "منتهي" badge (it does not block anything).
+
+6.2 Sales invoice (فاتورة بيع) - DocumentStatus
+  status              allowed actions (API)                            buttons to show                    editable?
+  ------------------  -----------------------------------------------  ---------------------------------  ---------------------
+  DRAFT مسودة          PATCH /:id, DELETE /:id, POST /:id/post            حفظ، حذف، ترحيل                     everything (header, lines, payment, currency)
+  POSTED مُرحّل         POST /:id/cancel, GET /:id/returnable              إلغاء، عمل مرتجع                    read only (paidAmount too)
+  CANCELLED ملغي        (nothing)                                         -                                  read only
+  Cancel is refused (400) while a POSTED sales return points to the invoice:
+  hide / disable "إلغاء" when data.salesReturns has one with status POSTED.
+
+6.3 Sales return (مرتجع بيع) - DocumentStatus
+  DRAFT مسودة          PATCH /:id, DELETE /:id, POST /:id/post            حفظ، حذف، ترحيل                     everything (quantities, reason, refund, notes)
+  POSTED مُرحّل         POST /:id/cancel                                   إلغاء                               read only
+  CANCELLED ملغي        (nothing)                                         -                                  read only
+
+6.4 Stock transfer (تحويل مخزني) - DocumentStatus
+  DRAFT مسودة          PATCH /:id, DELETE /:id, POST /:id/post            حفظ، حذف، ترحيل                     everything (warehouses + lines)
+  POSTED مُرحّل         POST /:id/cancel                                   إلغاء                               read only
+  CANCELLED ملغي        (nothing)                                         -                                  read only
+  (No "in transit" / "received" state.)
+
+6.5 Stock count (جرد) - DocumentStatus, but only DRAFT and POSTED
+  DRAFT مسودة          PATCH /:id/lines, PATCH /:id, DELETE /:id,         حفظ العد، تعديل، حذف، ترحيل          counts, countDate, notes (NOT the warehouse)
+                      POST /:id/post
+  POSTED مُرحّل         (nothing - FINAL, no cancel endpoint: 404)        -                                  read only
+
+Any action that is not allowed -> 409 INVALID_STATUS (field "status")
+-> "لا يمكن تنفيذ العملية في حالة المستند الحالية". Show a status badge
+(شارة الحالة) on every document and list row, with the Arabic labels above.
+
+
+=====================================================================
+7. LINKS BETWEEN DOCUMENTS AND THE BLOCKS
+=====================================================================
+7.1 Sales quotation -> Sales invoice (convert-to-invoice)
+  - Only an ACCEPTED quotation. The invoice copies customer, branch, warehouse
+    (unless you send one), lines (unitPrice), discounts, tax and notes, in the
+    default currency (rate 1), no dueDate.
+  - The quotation becomes CONVERTED (convertedToInvoiceId); the invoice shows
+    convertedFromQuotation { id, code } (null for a direct invoice). Show both as links.
+  - The invoice is a normal DRAFT: edit payment, dueDate... before posting.
+  - DELETE of that DRAFT invoice frees the quotation (same transaction): it
+    goes back to ACCEPTED, convertedToInvoiceId = null, and can be converted
+    again (a NEW SI number).
+  - CANCEL of the POSTED invoice does NOT: the quotation stays CONVERTED and
+    still points to the cancelled invoice (the history is kept).
+
+7.2 Sales invoice -> Sales returns
+  - GET /sales-invoices/:id lists salesReturns [{ id, code, returnDate, status, netTotal }]
+    (not deleted, any status; [] when none).
+  - GET /sales-invoices/:id/returnable gives, per invoice line (in the line's
+    unit): quantity (sold), returnedQuantity (POSTED returns only), remainingQuantity
+    = the most a new return can take.
+  - A return line points to an invoice line with salesInvoiceLineId. Product,
+    unit, price, the discount share, the tax and the cost come from the invoice.
+  - GET /sales-returns/:id has salesInvoice { id, code, invoiceDate, status }: show it as a link.
+
+7.3 Item card -> documents
+  - Every movement made by a document has sourceType (SI / SR / ST / SC, and
+    PI / PR from Week 2), sourceId (the document id) and sourceCode (its number):
+    show sourceCode as a link to the document. A stock count writes ADJUSTMENT
+    (تسوية) with sourceType "SC": show "تسوية جرد" + sourceCode.
+
+7.4 The blocks (what the server refuses, and the error)
+  - Cancel a sales invoice that has a POSTED return
+      -> 400 BAD_REQUEST field "status" -> "ألغِ المرتجع أولًا"
+  - Return more than sold minus already returned
+      -> 400 QUANTITY_EXCEEDED field "lines.N.quantity" -> "الكمية المرتجعة أكبر من المتبقي من الفاتورة"
+  - Return on an invoice that is not POSTED (DRAFT / CANCELLED)
+      -> 400 BAD_REQUEST field "salesInvoiceId" "salesInvoiceId must be a POSTED invoice (this one is CANCELLED)"
+  - Post a sales invoice / a transfer when the source warehouse doesn't have the pieces
+      -> 400 INSUFFICIENT_STOCK field "lines.N.quantity" -> "الكمية المتاحة في المخزن غير كافية"
+  - Cancel a sales return whose goods were sold again, or a transfer whose
+    destination already sold / moved the goods
+      -> 400 INSUFFICIENT_STOCK field "lines.N.quantity" (nothing changes)
+      e.g. "Insufficient stock: available 0, requested 12"
+  - Transfer to the same warehouse -> 400 BAD_REQUEST field "toWarehouseId"
+  - Transfer a SERVICE product (خدمي) -> 400 BAD_REQUEST field "lines.N.productId"
+    (SERVICE lines on sales invoices are allowed: no stock, cost 0)
+  - Open a count on a warehouse with nothing to count -> 400 BAD_REQUEST field "warehouseId"
+  - Post a count with no counted line -> 400 BAD_REQUEST field "lines"
+  - Change the warehouse of a count -> 400 VALIDATION_FAILED "property warehouseId should not exist"
+  - Delete a customer used by any (not deleted) sales invoice
+      -> 400 BAD_REQUEST field null "Customer is used by N sales invoice(s) and cannot be deleted"
+         -> "لا يمكن حذف العميل لأن عليه فواتير بيع"
+  - Delete a currency used by sales invoices
+      -> 400 BAD_REQUEST field null "Currency is used by N sales invoice(s) and cannot be deleted"
+         -> "لا يمكن حذف العملة لأنها مستخدمة في فواتير بيع"
+  - Delete a CONVERTED quotation -> 409 INVALID_STATUS "A CONVERTED quotation can't be deleted"
+
+
+=====================================================================
+8. DROPDOWNS AND LOOKUPS (which GET fills each select)
+=====================================================================
+  form field                          fill it with                                          note
+  ----------------------------------  ----------------------------------------------------  -------------------------------
+  customer (العميل)                    GET /customer                                         plain array
+  branch (الفرع)                       GET /branch                                           plain array
+  warehouse of a document (المخزن)     GET /inventory?branchId=<branchId>                    only the chosen branch's (quotation, invoice)
+  from / to warehouse (من / إلى مخزن)  GET /inventory                                        ALL warehouses (any branch); items have
+                                                                                            branchId only: join with GET /branch for
+                                                                                            the branch name; hide "from" in "to"
+  count warehouse (مخزن الجرد)          GET /inventory                                        all warehouses
+  product on sales lines (الصنف)        GET /products                                         plain array (STOCK and SERVICE)
+  product on transfer lines            GET /products, filter itemType = "STOCK"              SERVICE can't be transferred
+  unit on a line (الوحدة)               GET /products/<productId>/units                       primary first: factor "1", id null
+  suggested unitPrice (سعر البيع)       the product's retailPrice / wholesalePrice /          for a unit row, its retailPrice if set
+                                      bulkWholesalePrice (GET /products/<id>)
+  available stock (الرصيد المتاح)       GET /product-inventory/inventory/<warehouseId>        quantity in pieces (show it on invoice /
+                                                                                            transfer lines; the server checks on post)
+  currency (العملة)                    GET /currency                                         default first; plain array
+  paymentType (طريقة الدفع)             fixed: CASH نقدي, CREDIT آجل
+  quotation status filter              fixed: DRAFT, SENT, ACCEPTED, REJECTED, CONVERTED
+  invoice / return / transfer status   fixed: DRAFT, POSTED, CANCELLED
+  count status filter                  fixed: DRAFT, POSTED
+  invoice to return (فاتورة البيع)       GET /sales-invoices?status=POSTED&customerId=<id>     paginated (data.items)
+  invoice lines to return              GET /sales-invoices/<invoiceId>/returnable            remainingQuantity = max to type
+  movement type filter                 fixed: OPENING, ADJUSTMENT, PURCHASE, PURCHASE_CANCEL, PURCHASE_RETURN,
+                                       PURCHASE_RETURN_CANCEL, SALE, SALE_CANCEL, SALE_RETURN, SALE_RETURN_CANCEL,
+                                       TRANSFER_OUT, TRANSFER_IN, TRANSFER_OUT_CANCEL, TRANSFER_IN_CANCEL
+
+Arabic labels of the movement types (item card "type"):
+  OPENING رصيد افتتاحي (+)        ADJUSTMENT تسوية (+/-)          PURCHASE شراء (+)
+  PURCHASE_CANCEL إلغاء فاتورة شراء (-)    PURCHASE_RETURN مرتجع شراء (-)
+  PURCHASE_RETURN_CANCEL إلغاء مرتجع شراء (+)
+  SALE بيع (-)                    SALE_CANCEL إلغاء فاتورة بيع (+)
+  SALE_RETURN مرتجع بيع (+)        SALE_RETURN_CANCEL إلغاء مرتجع بيع (-)
+  TRANSFER_OUT تحويل صادر (-)      TRANSFER_IN تحويل وارد (+)
+  TRANSFER_OUT_CANCEL إلغاء تحويل صادر (+)   TRANSFER_IN_CANCEL إلغاء تحويل وارد (-)
+Document number prefixes (sourceType): SQ عرض سعر بيع, SI فاتورة بيع, SR مرتجع بيع,
+  ST تحويل مخزني, SC جرد (+ Week 2: PQ عرض سعر شراء, PI فاتورة شراء, PR مرتجع شراء).
+
+
+=====================================================================
+9. HOW THE SERVER COMPUTES THE TOTALS AND THE COSTS
+=====================================================================
+  Totals (quotations, invoices, returns) - the same formulas as Week 2:
+  lineTotal     = quantity x unitPrice - line discount                (4 decimals)
+                  line discount = discountPercent % of it, OR a fixed discountValue (not both)
+  subTotal      = sum of lineTotal                                    (2 decimals)
+  discountValue = subTotal x discountPercent / 100
+                  (if discountPercent is 0 or not sent: the fixed discountValue you send)
+  taxValue      = (subTotal - discountValue) x taxPercent / 100
+  netTotal      = subTotal - discountValue + taxValue
+  Rounding: half up.
+
+  Brush quotation / invoice: 5 x 180 = 900; discount 5% = 45; tax 14% of 855 = 119.70; net 974.70.
+
+  Invoice payment:  CASH   -> paidAmount = netTotal, remainingAmount 0
+                    CREDIT -> paidAmount 0 .. netTotal (default 0; switching CASH -> CREDIT
+                              without paidAmount sets it to 0), remainingAmount = netTotal - paidAmount
+  Currency:         not sent -> the default (exchangeRate 1); another currency -> exchangeRate required.
+
+  Sales return (always from the invoice):
+    unitPrice     = invoice lineTotal / invoice quantity        (180 a carton)
+    lineTotal     = quantity x unitPrice                        (1 x 180 = 180)
+    discountValue = subTotal x invoice discountValue / invoice subTotal   (180 x 45 / 900 = 9)
+    discountPercent and taxPercent shown = the invoice's (5, 14)
+    taxValue      = (subTotal - discountValue) x invoice taxPercent / 100 (171 x 14% = 23.94)
+    netTotal      = 180 - 9 + 23.94 = 194.94
+    refundAmount  = 0 .. netTotal (default 0): what we pay the customer back now
+
+  Costs (set by the server when POSTING, never sent by the frontend):
+    Sales invoice POST:  per STOCK line, the pieces leave at the warehouse AVERAGE now:
+                         stockUnitCost = that average             (10.6818)
+                         lineCost      = baseQuantity x stockUnitCost (60 x 10.6818 = 640.91)
+                         totalCost     = sum of lineCost          (640.91)
+                         SERVICE lines: no stock, cost 0.
+    grossProfit       = (subTotal - discountValue) x exchangeRate - totalCost
+                         (900 - 45) x 1 - 640.91 = 214.09; null while DRAFT; may be negative.
+    Sales invoice CANCEL: the pieces come back at the SALE movement's unitCost.
+    Sales return POST:   pieces back at the invoice line's stockUnitCost (12 x 10.6818 = 128.18)
+                         -> lineCost, totalCost (تكلفة البضاعة الراجعة).
+    Sales return CANCEL: pieces out at the warehouse's CURRENT average.
+    Transfer POST:       out of "from" at its average; into "to" at that SAME cost
+                         unitCost 10.6818, totalCost = 24 x 10.6818 = 256.36 (قيمة التحويل).
+    Transfer CANCEL:     out of "to" at its current average; back into "from" at the
+                         TRANSFER_OUT unitCost.
+    Stock count POST:    ADJUSTMENT of (countedQuantity - the balance at posting) at the
+                         current average; the average never changes. Saved per line:
+                         difference (-1) and unitCost (10.6818).
+    New average after any stock IN: (old qty x old avg + in qty x in cost) / (old qty + in qty).
+    Stock OUT never changes the average.
+
+  The frontend must NOT send (the server rejects them: 400 "property X should not exist"):
+    - totals: subTotal, taxValue, netTotal, remainingAmount, lineTotal, baseQuantity, unitFactor
+    - costs: stockUnitCost, lineCost, totalCost, unitCost (transfers), difference / unitCost (counts),
+      grossProfit
+    - codes and statuses: code, status (status changes only via the action endpoints)
+    - user ids: createdBy, modifiedBy, postedBy, cancelledBy (taken from the token)
+    - on a sales return: discountPercent, discountValue, taxPercent (from the invoice);
+      productId / itemUnitId / unitPrice in a return line are accepted but IGNORED
+    - on a stock count: lines (on create), systemQuantity, warehouseId (on PATCH)
+  Limits: quantities and prices max 4 decimals; money (paidAmount, refundAmount,
+  header discountValue) max 2; percents 0-100 with max 2 decimals; countedQuantity >= 0.
+  Too many decimals -> 400 VALIDATION_FAILED (the server never rounds your input).
+
+
+=====================================================================
+10. LISTS
+=====================================================================
+Paginated lists take ?page=1&pageSize=20 (page >= 1, pageSize 1-100, default 20)
+and return data as an OBJECT:
+  { "items": [ ... ], "meta": { "page": 1, "pageSize": 20, "total": 1, "totalPages": 1 } }
+A page after the last one returns "items": [] (not an error).
+Bad page / pageSize / filter value / unknown parameter -> 400 VALIDATION_FAILED.
+
+  list                         paginated  filters (all optional)
+  ---------------------------  ---------  ---------------------------------------------------------------
+  GET /sales-quotations         yes        customerId, branchId, status, dateFrom, dateTo, search
+                                           (search = part of the code, the customer name or the notes)
+  GET /sales-invoices           yes        customerId, branchId, warehouseId, status, paymentType,
+                                           dateFrom, dateTo, search (code, customer name, notes)
+  GET /sales-returns            yes        customerId, salesInvoiceId, status, dateFrom, dateTo
+  GET /stock-transfers          yes        fromWarehouseId, toWarehouseId, status, dateFrom, dateTo,
+                                           search (code or notes)
+  GET /stock-counts             yes        warehouseId, status, dateFrom, dateTo
+  GET /stock-movements          yes        productId, warehouseId, type, dateFrom, dateTo (newest first;
+                                           the dates filter movementDate = when it was posted)
+  GET /stock-movements/item-card NO        productId + warehouseId REQUIRED (one object, movements oldest first)
+  GET /sales-invoices/:id/returnable NO    - (one object with lines)
+  Week 1 lists (/customer, /branch, /inventory, /products...)  NO (plain arrays)
+
+  Document lists: newest document date first. dateFrom / dateTo: "YYYY-MM-DD",
+  both inclusive, on the document date (quotationDate / invoiceDate /
+  returnDate / transferDate / countDate). Each item = the header +
+  "_count": { "lines": N } and NO lines (open one document with GET /:id):
+    quotations: + customer, branch, warehouse, isExpired
+    invoices:   + customer, branch, warehouse, currency (NO grossProfit in the list)
+    returns:    + customer, branch, warehouse, salesInvoice { id, code }
+    transfers:  + fromWarehouse / toWarehouse { id, name, branch { id, code, name } }
+    counts:     + warehouse { id, name, branch { id, code, name } }
+
+
+=====================================================================
+11. BUILD ORDER FOR THE FRONTEND, MODULE BY MODULE
+=====================================================================
+Reuse the Week 2 shared components (StatusBadge, LinesTable, TotalsBox,
+DocumentActions, PaginatedTable, ErrorTranslator). Add:
+  - the new statuses / movement types / prefixes to StatusBadge and the item card (section 8),
+  - a CostBox (read only, POSTED only): stockUnitCost / lineCost per line,
+    totalCost and grossProfit (Week 5 will hide it from SALES / USER),
+  - a WarehouseStock hint: the available pieces of the chosen warehouse next
+    to each line (GET /product-inventory/inventory/<warehouseId>).
+
+11.0 Changes to the old screens first (section 12): customer delete, currency
+  delete, purchase quotation after deleting a converted invoice, item card labels.
+
+11.1 Sales quotations (عروض أسعار البيع)
+  Screens: list (paginated, filters, status badge, isExpired badge), form
+  (header + LinesTable + TotalsBox), details with status buttons and "تحويل لفاتورة".
+  Endpoints: GET/POST /sales-quotations, GET/PATCH/DELETE /sales-quotations/:id,
+  PATCH /sales-quotations/:id/status, POST /sales-quotations/:id/convert-to-invoice.
+  Header body: quotationDate, validUntil?, customerId, branchId, warehouseId?,
+  discountPercent?, discountValue?, taxPercent?, notes?, lines[].
+  Line body: productId, itemUnitId, quantity, unitPrice, discountPercent? OR discountValue?, notes?.
+  PATCH: send "lines" only to REPLACE all lines (send the full list).
+  Convert dialog body: paymentType, invoiceDate, warehouseId? (required when the quotation has none).
+  Done when: the brush quotation gives 900 / 45 / 119.70 / 974.70 and code
+  SQ-2026-000001; DRAFT -> SENT -> ACCEPTED; DRAFT -> ACCEPTED shows the
+  INVALID_STATUS message; convert opens SI-2026-000001 (DRAFT) and the
+  quotation shows CONVERTED with a link.
+
+11.2 Sales invoices (فواتير البيع)
+  Screens: list (paginated, filters), form (header + payment + currency +
+  LinesTable + TotalsBox), details with Post / Cancel / "عمل مرتجع", CostBox,
+  its returns (salesReturns), and a link to the source quotation.
+  Endpoints: GET/POST /sales-invoices, GET/PATCH/DELETE /sales-invoices/:id,
+  POST /sales-invoices/:id/post, POST /sales-invoices/:id/cancel,
+  GET /sales-invoices/:id/returnable.
+  Header body: invoiceDate, dueDate? (>= invoiceDate), paymentType (CASH | CREDIT),
+  customerId, branchId, warehouseId (required, same branch), currencyId?,
+  exchangeRate?, discountPercent?, discountValue?, taxPercent?, paidAmount? (CREDIT only),
+  notes?, lines[].
+  Line body: productId, itemUnitId, quantity, unitPrice, discountPercent? OR discountValue?, notes?.
+  UI: hide paidAmount for CASH; show exchangeRate only for a non-default currency;
+  never show cost fields on the form (only in CostBox after posting).
+  Done when: the converted brush invoice with paid 400 shows remaining 574.70;
+  posting shows totalCost 640.91 / grossProfit 214.09 and the item card SALE -60
+  (Maadi 158); the 20-carton invoice shows the INSUFFICIENT_STOCK message on line 1;
+  deleting it works; cancel with a posted return shows "ألغِ المرتجع أولًا".
+
+11.3 Sales returns (مرتجعات البيع)
+  Screens: list (paginated, filters), form (pick a POSTED invoice -> returnable
+  lines with a quantity box each; NO "without invoice" mode), details with
+  Post / Cancel, CostBox and a link to the invoice.
+  Endpoints: GET/POST /sales-returns, GET/PATCH/DELETE /sales-returns/:id,
+  POST /sales-returns/:id/post, POST /sales-returns/:id/cancel,
+  GET /sales-invoices/:id/returnable.
+  Body: returnDate, salesInvoiceId, reason?, refundAmount?, notes?,
+  lines[{ salesInvoiceLineId, quantity, notes? }]  (customer / branch / warehouse
+  come from the invoice; no discount / tax fields).
+  Done when: returning 1 brush carton shows 180 / 9 / 23.94 / 194.94 and code
+  SR-2026-000001; typing 6 shows the QUANTITY_EXCEEDED message on that line;
+  posting shows totalCost 128.18 and the card SALE_RETURN +12 at 10.6818
+  (Maadi 170); the invoice's returnable shows 5 / 1 / 4.
+
+11.4 Stock transfers (التحويلات المخزنية)
+  Screens: list (paginated, filters), form (from / to warehouse + lines of
+  product, unit, quantity; no prices), details with Post / Cancel and the
+  cost (unitCost per line, totalCost) after posting.
+  Endpoints: GET/POST /stock-transfers, GET/PATCH/DELETE /stock-transfers/:id,
+  POST /stock-transfers/:id/post, POST /stock-transfers/:id/cancel.
+  Body: transferDate, fromWarehouseId, toWarehouseId, notes?,
+  lines[{ productId, itemUnitId, quantity, notes? }]  (STOCK products only).
+  Done when: 2 cartons Maadi -> Nasr City make ST-2026-000001; posting shows
+  totalCost 256.36, Maadi card TRANSFER_OUT -24 (146) and Nasr City card
+  TRANSFER_IN +24 (24); "from" = "to" shows the toWarehouseId error.
+
+11.5 Stock counts (الجرد)
+  Screens: list (paginated, filters), "جرد جديد" dialog (date + warehouse +
+  notes), the count sheet (كود الصنف | الصنف | الكمية في السيستم | الكمية
+  الفعلية | الفرق) with "حفظ العد" and "ترحيل", read only after posting.
+  Endpoints: GET/POST /stock-counts, GET/PATCH/DELETE /stock-counts/:id,
+  PATCH /stock-counts/:id/lines, POST /stock-counts/:id/post (NO cancel).
+  Bodies: create { countDate, warehouseId, notes? }; lines { lines: [{ lineId,
+  countedQuantity (pieces, >= 0, or null) }] }; PATCH /:id { countDate?, notes? }.
+  UI: while DRAFT you may preview counted - systemQuantity as "فرق مبدئي";
+  after posting show the saved difference and unitCost.
+  Done when: opening a count on Maadi shows one line with systemQuantity 146
+  and code SC-2026-000001; posting with nothing counted shows the "lines"
+  error; counting 145 and posting shows difference -1 and the card ADJUSTMENT
+  -1 "جرد SC-2026-000001" (Maadi 145).
+
+11.6 Item card and movements (كارت الصنف وحركات المخزن) - update the Week 2 screens
+  Add the new types (section 8), show sourceCode as a link (section 7.3).
+  Done when: the Maadi card shows the 9 rows of W3-21 with quantity 145 and the
+  Nasr City card the 1 row of W3-22 with quantity 24.
+
+
+=====================================================================
+12. BREAKING CHANGES FROM WEEK 1 / WEEK 2 (short)
+=====================================================================
+  - DELETE /customer/:id -> 400 while any (not deleted) sales invoice uses the customer:
+      "Customer is used by N sales invoice(s) and cannot be deleted" (field null).
+  - DELETE /currency/:id -> also 400 while sales invoices use the currency:
+      "Currency is used by N sales invoice(s) and cannot be deleted" (field null).
+  - DELETE of a DRAFT purchase (or sales) invoice made by convert-to-invoice
+    now puts its quotation back to ACCEPTED (convertedToInvoiceId null): reload
+    the quotation after the delete. Cancel of a POSTED invoice does not.
+  - The item card and GET /stock-movements have 8 new movement types and 4 new
+    sourceType values (SI, SR, ST, SC); a stock count writes ADJUSTMENT with
+    sourceType "SC" and reason "جرد SC-...". Add their labels (section 8).
+  - Nothing else in Week 1 / Week 2 changed (same requests, same responses).
+The exact BEFORE / AFTER of each one is in doc/FRONTEND_WEEK3_READ_FIRST.txt, PART 0.

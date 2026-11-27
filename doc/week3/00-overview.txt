@@ -2,7 +2,9 @@ ERP API - Week 3 Overview (Sales + stock control)
 =================================================
 
 >>> Frontend: read doc/FRONTEND_WEEK3_READ_FIRST.txt first (everything new or
->>> changed in Week 3, updated with every task), then this file.
+>>> changed in Week 3, updated with every task), then this file, then
+>>> doc/week3/week3flow.txt (the whole Week 3 flow in one self-contained file:
+>>> every step, state machine, error and screen, module by module).
 
 Week 3 adds SALES (المبيعات) and STOCK CONTROL between warehouses:
 sales quotations, sales invoices, sales returns, stock transfers and stock
@@ -94,7 +96,10 @@ Modules (task number = the order they are built in)
   = out of one warehouse and into the other at the source average, cancel =
   back at the same cost), Task 7 (stock counts: open -> the server makes one
   line per product -> type the counts -> post = one ADJUSTMENT per
-  difference, against the balance at posting; NO cancel).
+  difference, against the balance at posting; NO cancel), Task 8 (docs:
+  week3flow.txt; requests.http "WEEK 3 - THE BIG TEST" W3-0 ... W3-22, run
+  right after "WEEK 2 - THE BIG TEST" on an empty database: Maadi ends at 145
+  brushes (9 movements), Nasr City at 24 (1 movement)). Week 3 is complete.
   New document numbers (one counter per type per year):
     SQ-2026-000001 (sales quotation), SI- (sales invoice), SR- (sales return),
     ST- (stock transfer), SC- (stock count).
@@ -108,4 +113,6 @@ Files in this folder
   sales-returns.txt      /sales-returns     (مرتجعات البيع: linked to an invoice, post = stock back at the sale cost)
   stock-transfers.txt    /stock-transfers   (التحويلات: warehouse -> warehouse in one step, at the source average)
   stock-counts.txt       /stock-counts      (الجرد: open -> count -> post = adjustments; no cancel)
-  (one file per module is added with each task)
+  week3flow.txt          the WHOLE Week 3 flow in one self-contained file (the 22 steps of the
+                         big test with bodies / responses / errors, state machines, links and
+                         blocks, dropdowns, totals and costs, lists, build order, breaking changes)

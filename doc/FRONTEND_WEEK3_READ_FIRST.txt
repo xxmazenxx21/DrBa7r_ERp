@@ -4,7 +4,8 @@ FRONTEND - READ THIS FIRST (Week 3 backend changes)
 >>> This file is updated with every Week 3 task. Check the "Last update" line
 >>> below after every pull.
 
-Last update: Week 3 Task 7 (stock counts: PART 7).
+Last update: Week 3 Task 8 (docs: doc/week3/week3flow.txt = the whole Week 3
+flow in one file; requests.http "WEEK 3 - THE BIG TEST"). Week 3 is complete.
 Changes to screens you already built (Week 1 / Week 2): PART 0 - check it first.
 New endpoints: PART 2 (sales quotations), PART 3 (sales invoices),
 PART 4 (POST /sales-quotations/:id/convert-to-invoice), PART 5 (sales returns),
@@ -70,7 +71,10 @@ How to read the docs
   1. THIS file (what is new / changed in Week 3)
   2. doc/week3/00-overview.txt (the Week 3 story, the 6 decisions, the 5
      rules, the module list)
-  3. the module files in doc/week3/ (added with each task)
+  3. doc/week3/week3flow.txt (the WHOLE Week 3 flow, self-contained: the 22
+     steps W3-0 ... W3-22 with bodies, responses and errors, state machines,
+     dropdowns, totals and costs, lists, build order module by module)
+  4. the module files in doc/week3/ (one per module: every field and error)
   The Week 2 flow (purchasing, stock, item card) is in doc/week2/week2flow.txt.
 
 
@@ -172,8 +176,9 @@ PART 3 - SALES INVOICES (فواتير البيع)  - doc/week3/sales-invoices.tx
   net 974.70, remaining 974.70. POST -> item card SALE -60 at 10.6818
   (Maadi 218 -> 158), totalCost 640.91, grossProfit 214.09. POST again -> 409.
   20 cartons with only 158 brushes -> POST gives 400 INSUFFICIENT_STOCK
-  (field lines.0.quantity) and nothing changes. CANCEL -> SALE_CANCEL +60 at
-  10.6818 (the cost they left with) -> Maadi 218.
+  (field lines.0.quantity) and nothing changes. CANCEL (right after the post,
+  before any return) -> SALE_CANCEL +60 at 10.6818 (the cost they left with)
+  -> Maadi 218.
   UI: show totalCost / grossProfit / line costs read only on POSTED invoices
   (Week 5 will hide them from SALES / USER); hide paidAmount for CASH.
 

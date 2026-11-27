@@ -65,7 +65,9 @@ The brush example (Week 3 story)
   POST again -> 409 INVALID_STATUS
   An invoice of 20 cartons (240 brushes, only 158 left) -> POST gives
      400 INSUFFICIENT_STOCK and nothing changes
-  CANCEL the first invoice -> the 60 brushes come back at 10.6818 -> Maadi 218
+  CANCEL the first invoice (right after the post, before any return) -> the
+     60 brushes come back at 10.6818 -> Maadi 218. (In the story it is NOT
+     cancelled: once a return is POSTED, cancel gives 400, see API 7.)
 
 Payment, currency and cost rules
 --------------------------------

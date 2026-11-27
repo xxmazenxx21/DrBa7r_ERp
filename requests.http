@@ -296,6 +296,8 @@ Authorization: Bearer {{token}}
 #   docker compose up -d --build
 # then send these requests IN ORDER (W2-0 ... W2-16). The expected result is
 # in the comment above each request. Final check: 100 + 120 - 24 + 24 - 2 = 218.
+# "WEEK 3 - THE BIG TEST" (W3-0 ... W3-22) comes right after it and continues
+# on the same data.
 # (Self-contained: it does not use the Week 1 requests above.)
 
 ### W2-0 Login (admin / admin123 is created on an empty database)
@@ -552,7 +554,301 @@ GET {{baseUrl}}/stock-movements/item-card?productId={{w2brush.response.body.$.da
 Authorization: Bearer {{w2token}}
 
 ### =====================================================================
-### WEEK 2 - MORE EXAMPLES (after the big test; same data)
+### WEEK 3 - THE BIG TEST (the whole sales + stock story, top to bottom)
+### =====================================================================
+# Runs RIGHT AFTER "WEEK 2 - THE BIG TEST" above, on the same database (empty
+# before W2-0: docker compose down -v; docker compose up -d --build).
+# It starts where Week 2 ended: Maadi (مخزن المعادي) has 218 brushes @ 10.6818,
+# carton = 12 pieces; it uses w2branch, w2warehouse, w2brush, w2carton.
+# Send W3-0 ... W3-22 IN ORDER; the expected result is in the comment above
+# each request. Every document is dated 2026-11-27.
+# Final check: Maadi 218 - 60 + 12 - 24 - 1 = 145 (9 movements on the card),
+#              Nasr City 0 + 24 = 24 (1 movement).
+
+### W3-0 Login -> data.access_token (@w3token)
+# @name w3login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "password": "admin123"
+}
+
+###
+@w3token = {{w3login.response.body.$.data.access_token}}
+
+### W3-1a Branch "فرع مدينة نصر" -> 201
+# @name w3nasrBranch
+POST {{baseUrl}}/branch
+Content-Type: application/json
+Authorization: Bearer {{w3token}}
+
+{
+  "name": "فرع مدينة نصر",
+  "address": "مدينة نصر"
+}
+
+### W3-1b Its warehouse "مخزن مدينة نصر" (empty) -> 201
+# @name w3nasr
+POST {{baseUrl}}/inventory/branch/{{w3nasrBranch.response.body.$.data.id}}
+Content-Type: application/json
+Authorization: Bearer {{w3token}}
+
+{
+  "name": "مخزن مدينة نصر",
+  "address": "مدينة نصر"
+}
+
+### W3-2 Customer "صيدلية الشفاء" -> 201, code CUS-...
+# @name w3customer
+POST {{baseUrl}}/customer
+Content-Type: application/json
+Authorization: Bearer {{w3token}}
+
+{
+  "name": "صيدلية الشفاء"
+}
+
+### W3-3 Sales quotation: Maadi, 5 cartons x 180, discount 5%, tax 14%, valid until 2026-12-31 -> SQ-2026-000001 DRAFT, 900 / 45 / 119.70 / 974.70
+# @name w3quotation
+POST {{baseUrl}}/sales-quotations
+Content-Type: application/json
+Authorization: Bearer {{w3token}}
+
+{
+  "quotationDate": "2026-11-27",
+  "validUntil": "2026-12-31",
+  "customerId": "{{w3customer.response.body.$.data.id}}",
+  "branchId": "{{w2branch.response.body.$.data.id}}",
+  "warehouseId": "{{w2warehouse.response.body.$.data.id}}",
+  "discountPercent": 5,
+  "taxPercent": 14,
+  "lines": [
+    {
+      "productId": "{{w2brush.response.body.$.data.id}}",
+      "itemUnitId": "{{w2carton.response.body.$.data.id}}",
+      "quantity": 5,
+      "unitPrice": 180
+    }
+  ]
+}
+
+### W3-4a Send the quotation -> status SENT
+# @name w3sent
+PATCH {{baseUrl}}/sales-quotations/{{w3quotation.response.body.$.data.id}}/status
+Content-Type: application/json
+Authorization: Bearer {{w3token}}
+
+{
+  "status": "SENT"
+}
+
+### W3-4b Accept it -> status ACCEPTED
+# @name w3accepted
+PATCH {{baseUrl}}/sales-quotations/{{w3quotation.response.body.$.data.id}}/status
+Content-Type: application/json
+Authorization: Bearer {{w3token}}
+
+{
+  "status": "ACCEPTED"
+}
+
+### W3-5 Convert to a CREDIT invoice -> SI-2026-000001 DRAFT, netTotal 974.70; the quotation is CONVERTED
+# @name w3convert
+POST {{baseUrl}}/sales-quotations/{{w3quotation.response.body.$.data.id}}/convert-to-invoice
+Content-Type: application/json
+Authorization: Bearer {{w3token}}
+
+{
+  "paymentType": "CREDIT",
+  "invoiceDate": "2026-11-27"
+}
+
+###
+@w3invoiceId = {{w3convert.response.body.$.data.invoice.id}}
+
+### W3-6 The customer pays 400 now -> paidAmount 400, remainingAmount 574.70
+# @name w3paid
+PATCH {{baseUrl}}/sales-invoices/{{w3invoiceId}}
+Content-Type: application/json
+Authorization: Bearer {{w3token}}
+
+{
+  "paidAmount": 400
+}
+
+### W3-7 Post the invoice -> POSTED, stockUnitCost 10.6818, totalCost 640.91, grossProfit 214.09; Maadi 158 (SALE -60)
+# @name w3post
+POST {{baseUrl}}/sales-invoices/{{w3invoiceId}}/post
+Authorization: Bearer {{w3token}}
+
+### W3-8 A CASH invoice of 20 cartons x 180 -> SI-2026-000002 DRAFT
+# @name w3bigInvoice
+POST {{baseUrl}}/sales-invoices
+Content-Type: application/json
+Authorization: Bearer {{w3token}}
+
+{
+  "invoiceDate": "2026-11-27",
+  "paymentType": "CASH",
+  "customerId": "{{w3customer.response.body.$.data.id}}",
+  "branchId": "{{w2branch.response.body.$.data.id}}",
+  "warehouseId": "{{w2warehouse.response.body.$.data.id}}",
+  "lines": [
+    {
+      "productId": "{{w2brush.response.body.$.data.id}}",
+      "itemUnitId": "{{w2carton.response.body.$.data.id}}",
+      "quantity": 20,
+      "unitPrice": 180
+    }
+  ]
+}
+
+### W3-9 Post it -> 400 INSUFFICIENT_STOCK, field lines.0.quantity ("available 158, requested 240"); nothing changes
+# @name w3bigPost
+POST {{baseUrl}}/sales-invoices/{{w3bigInvoice.response.body.$.data.id}}/post
+Authorization: Bearer {{w3token}}
+
+### W3-10 Delete it (still DRAFT) -> 200; Maadi still 158
+# @name w3bigDelete
+DELETE {{baseUrl}}/sales-invoices/{{w3bigInvoice.response.body.$.data.id}}
+Authorization: Bearer {{w3token}}
+
+### W3-11 Return 6 cartons of SI-2026-000001 -> 400 QUANTITY_EXCEEDED, field lines.0.quantity ("Only 5 can still be returned ...")
+# @name w3returnTooMany
+POST {{baseUrl}}/sales-returns
+Content-Type: application/json
+Authorization: Bearer {{w3token}}
+
+{
+  "returnDate": "2026-11-27",
+  "salesInvoiceId": "{{w3invoiceId}}",
+  "lines": [
+    {
+      "salesInvoiceLineId": "{{w3post.response.body.$.data.lines[0].id}}",
+      "quantity": 6
+    }
+  ]
+}
+
+### W3-12 Return 1 carton, reason "تالف" -> SR-2026-000001 DRAFT, 180 / 9 / 23.94 / 194.94
+# @name w3return
+POST {{baseUrl}}/sales-returns
+Content-Type: application/json
+Authorization: Bearer {{w3token}}
+
+{
+  "returnDate": "2026-11-27",
+  "reason": "تالف",
+  "salesInvoiceId": "{{w3invoiceId}}",
+  "lines": [
+    {
+      "salesInvoiceLineId": "{{w3post.response.body.$.data.lines[0].id}}",
+      "quantity": 1
+    }
+  ]
+}
+
+### W3-13 Post the return -> POSTED, totalCost 128.18; Maadi 170 (SALE_RETURN +12 at 10.6818)
+# @name w3returnPost
+POST {{baseUrl}}/sales-returns/{{w3return.response.body.$.data.id}}/post
+Authorization: Bearer {{w3token}}
+
+### W3-14 Cancel SI-2026-000001 -> 400 BAD_REQUEST, field status ("This invoice has 1 POSTED sales return(s): ...")
+# @name w3cancelInvoice
+POST {{baseUrl}}/sales-invoices/{{w3invoiceId}}/cancel
+Authorization: Bearer {{w3token}}
+
+### W3-15 Transfer 2 cartons Maadi -> Nasr City -> ST-2026-000001 DRAFT
+# @name w3transfer
+POST {{baseUrl}}/stock-transfers
+Content-Type: application/json
+Authorization: Bearer {{w3token}}
+
+{
+  "transferDate": "2026-11-27",
+  "fromWarehouseId": "{{w2warehouse.response.body.$.data.id}}",
+  "toWarehouseId": "{{w3nasr.response.body.$.data.id}}",
+  "lines": [
+    {
+      "productId": "{{w2brush.response.body.$.data.id}}",
+      "itemUnitId": "{{w2carton.response.body.$.data.id}}",
+      "quantity": 2
+    }
+  ]
+}
+
+### W3-16 Post the transfer -> POSTED, totalCost 256.36; Maadi 146 (TRANSFER_OUT -24), Nasr City 24 (TRANSFER_IN +24)
+# @name w3transferPost
+POST {{baseUrl}}/stock-transfers/{{w3transfer.response.body.$.data.id}}/post
+Authorization: Bearer {{w3token}}
+
+### W3-17 Transfer Maadi -> Maadi -> 400 BAD_REQUEST, field toWarehouseId
+# @name w3sameWarehouse
+POST {{baseUrl}}/stock-transfers
+Content-Type: application/json
+Authorization: Bearer {{w3token}}
+
+{
+  "transferDate": "2026-11-27",
+  "fromWarehouseId": "{{w2warehouse.response.body.$.data.id}}",
+  "toWarehouseId": "{{w2warehouse.response.body.$.data.id}}",
+  "lines": [
+    {
+      "productId": "{{w2brush.response.body.$.data.id}}",
+      "itemUnitId": "{{w2carton.response.body.$.data.id}}",
+      "quantity": 2
+    }
+  ]
+}
+
+### W3-18 Open a stock count on Maadi -> SC-2026-000001 DRAFT; the brush line has systemQuantity 146
+# @name w3count
+POST {{baseUrl}}/stock-counts
+Content-Type: application/json
+Authorization: Bearer {{w3token}}
+
+{
+  "countDate": "2026-11-27",
+  "warehouseId": "{{w2warehouse.response.body.$.data.id}}"
+}
+
+### W3-19 Type the count: brush = 145 -> countedQuantity 145
+# (the brush is the only product in Maadi, so it is lines[0])
+# @name w3countLines
+PATCH {{baseUrl}}/stock-counts/{{w3count.response.body.$.data.id}}/lines
+Content-Type: application/json
+Authorization: Bearer {{w3token}}
+
+{
+  "lines": [
+    {
+      "lineId": "{{w3count.response.body.$.data.lines[0].id}}",
+      "countedQuantity": 145
+    }
+  ]
+}
+
+### W3-20 Post the count -> POSTED, difference -1; Maadi 145 (ADJUSTMENT -1, sourceCode SC-2026-000001)
+# @name w3countPost
+POST {{baseUrl}}/stock-counts/{{w3count.response.body.$.data.id}}/post
+Authorization: Bearer {{w3token}}
+
+### W3-21 Item card brush + Maadi -> 9 movements, quantity 145, avgCost 10.6818
+# OPENING +100, PURCHASE +120, PURCHASE_RETURN -24, PURCHASE_RETURN_CANCEL +24, ADJUSTMENT -2,
+# SALE -60, SALE_RETURN +12, TRANSFER_OUT -24, ADJUSTMENT -1 (SC-2026-000001)
+# @name w3cardMaadi
+GET {{baseUrl}}/stock-movements/item-card?productId={{w2brush.response.body.$.data.id}}&warehouseId={{w2warehouse.response.body.$.data.id}}
+Authorization: Bearer {{w3token}}
+
+### W3-22 Item card brush + Nasr City -> 1 movement (TRANSFER_IN +24 at 10.6818), quantity 24
+# @name w3cardNasr
+GET {{baseUrl}}/stock-movements/item-card?productId={{w2brush.response.body.$.data.id}}&warehouseId={{w3nasr.response.body.$.data.id}}
+Authorization: Bearer {{w3token}}
+
+### =====================================================================
+### WEEK 2 - MORE EXAMPLES (after the two big tests; same data)
 ### =====================================================================
 
 ### Currencies (default first)
@@ -673,130 +969,55 @@ Authorization: Bearer {{w2token}}
 }
 
 ### =====================================================================
-### WEEK 3 - SALES QUOTATIONS (samples, not the big test)
+### WEEK 3 - MORE EXAMPLES (after the two big tests; same data)
 ### =====================================================================
-# Uses the data of "WEEK 2 - THE BIG TEST" above (run it first): w2token,
-# the Maadi branch / warehouse, the brush and its carton unit.
+# Run "WEEK 2 - THE BIG TEST" and "WEEK 3 - THE BIG TEST" first (they leave
+# Maadi at 145 brushes @ 10.6818 and Nasr City at 24). These samples show the
+# lists, filters, error cases and the cancel paths. Every stock change below is
+# undone again, so they also END at Maadi 145 / Nasr City 24.
+# Request names start with ex3 (the big test uses w3).
 
-### A customer: صيدلية الشفاء
-# @name w3customer
-POST {{baseUrl}}/customer
-Content-Type: application/json
-Authorization: Bearer {{w2token}}
+### ---------------------------------------------------------------------
+### Sales quotations (عروض أسعار البيع)
+### ---------------------------------------------------------------------
 
-{
-  "name": "صيدلية الشفاء"
-}
+### Quotations list (paginated; filters customerId, branchId, status, dateFrom, dateTo, search)
+GET {{baseUrl}}/sales-quotations?status=CONVERTED&customerId={{w3customer.response.body.$.data.id}}&page=1&pageSize=20
+Authorization: Bearer {{w3token}}
 
-### Sales quotation: 5 cartons x 180, discount 5%, tax 14% -> SQ-2026-000001, netTotal 974.70
-# @name w3quotation
-POST {{baseUrl}}/sales-quotations
-Content-Type: application/json
-Authorization: Bearer {{w2token}}
+### Search = part of the code, the customer name or the notes
+GET {{baseUrl}}/sales-quotations?search=SQ-2026
+Authorization: Bearer {{w3token}}
 
-{
-  "quotationDate": "2026-11-27",
-  "validUntil": "2026-12-10",
-  "customerId": "{{w3customer.response.body.$.data.id}}",
-  "branchId": "{{w2branch.response.body.$.data.id}}",
-  "warehouseId": "{{w2warehouse.response.body.$.data.id}}",
-  "discountPercent": 5,
-  "taxPercent": 14,
-  "lines": [
-    {
-      "productId": "{{w2brush.response.body.$.data.id}}",
-      "itemUnitId": "{{w2carton.response.body.$.data.id}}",
-      "quantity": 5,
-      "unitPrice": 180
-    }
-  ]
-}
-
-### DRAFT -> ACCEPTED directly -> 409 INVALID_STATUS
-PATCH {{baseUrl}}/sales-quotations/{{w3quotation.response.body.$.data.id}}/status
-Content-Type: application/json
-Authorization: Bearer {{w2token}}
-
-{
-  "status": "ACCEPTED"
-}
-
-### DRAFT -> SENT
-PATCH {{baseUrl}}/sales-quotations/{{w3quotation.response.body.$.data.id}}/status
-Content-Type: application/json
-Authorization: Bearer {{w2token}}
-
-{
-  "status": "SENT"
-}
-
-### Edit while SENT ("lines" would REPLACE all lines)
-PATCH {{baseUrl}}/sales-quotations/{{w3quotation.response.body.$.data.id}}
-Content-Type: application/json
-Authorization: Bearer {{w2token}}
-
-{
-  "notes": "السعر شامل التوصيل"
-}
-
-### SENT -> ACCEPTED
-PATCH {{baseUrl}}/sales-quotations/{{w3quotation.response.body.$.data.id}}/status
-Content-Type: application/json
-Authorization: Bearer {{w2token}}
-
-{
-  "status": "ACCEPTED"
-}
-
-### One sales quotation (lines + isExpired)
+### One quotation: SQ-2026-000001, CONVERTED, convertedToInvoiceId = SI-2026-000001's id, isExpired false
 GET {{baseUrl}}/sales-quotations/{{w3quotation.response.body.$.data.id}}
-Authorization: Bearer {{w2token}}
+Authorization: Bearer {{w3token}}
 
-### List (paginated; filters customerId, branchId, status, dateFrom, dateTo, search)
-GET {{baseUrl}}/sales-quotations?status=ACCEPTED&page=1&pageSize=20
-Authorization: Bearer {{w2token}}
-
-### Convert to invoice (CREDIT) -> quotation CONVERTED + SI-2026-000001 DRAFT, netTotal 974.70, remainingAmount 974.70
-# No stock effect yet: the invoice is a DRAFT (post it to take the goods out).
-# warehouseId is optional here (the quotation has one).
-# @name w3convert
+### Convert it again -> 409 INVALID_STATUS ("This quotation is CONVERTED: ...")
 POST {{baseUrl}}/sales-quotations/{{w3quotation.response.body.$.data.id}}/convert-to-invoice
 Content-Type: application/json
-Authorization: Bearer {{w2token}}
+Authorization: Bearer {{w3token}}
 
 {
   "paymentType": "CREDIT",
-  "invoiceDate": "2026-11-27"
+  "invoiceDate": "2026-11-28"
 }
 
-### Convert again -> 409 INVALID_STATUS ("This quotation is CONVERTED: ...")
-POST {{baseUrl}}/sales-quotations/{{w3quotation.response.body.$.data.id}}/convert-to-invoice
-Content-Type: application/json
-Authorization: Bearer {{w2token}}
-
-{
-  "paymentType": "CREDIT",
-  "invoiceDate": "2026-11-27"
-}
-
-### Delete the CONVERTED quotation -> 409 INVALID_STATUS
+### Delete a CONVERTED quotation -> 409 INVALID_STATUS
 DELETE {{baseUrl}}/sales-quotations/{{w3quotation.response.body.$.data.id}}
-Authorization: Bearer {{w2token}}
+Authorization: Bearer {{w3token}}
 
-### The new invoice links back: convertedFromQuotation { id, code: "SQ-2026-000001" }
-GET {{baseUrl}}/sales-invoices/{{w3convert.response.body.$.data.invoice.id}}
-Authorization: Bearer {{w2token}}
-
-### A second quotation, no warehouse -> SQ-2026-000002 (DRAFT)
-# @name w3draftQuotation
+### A second quotation, NO warehouse -> SQ-2026-000002 DRAFT, netTotal 205.20
+# @name ex3quotation
 POST {{baseUrl}}/sales-quotations
 Content-Type: application/json
-Authorization: Bearer {{w2token}}
+Authorization: Bearer {{w3token}}
 
 {
-  "quotationDate": "2026-11-27",
+  "quotationDate": "2026-11-28",
   "customerId": "{{w3customer.response.body.$.data.id}}",
   "branchId": "{{w2branch.response.body.$.data.id}}",
+  "taxPercent": 14,
   "lines": [
     {
       "productId": "{{w2brush.response.body.$.data.id}}",
@@ -807,271 +1028,261 @@ Authorization: Bearer {{w2token}}
   ]
 }
 
-### Convert a DRAFT quotation -> 409 INVALID_STATUS (only ACCEPTED can be converted)
-# (once ACCEPTED, this one would need "warehouseId" in the body: it has none -> 400 VALIDATION_FAILED field warehouseId)
-POST {{baseUrl}}/sales-quotations/{{w3draftQuotation.response.body.$.data.id}}/convert-to-invoice
+### DRAFT -> ACCEPTED directly -> 409 INVALID_STATUS
+PATCH {{baseUrl}}/sales-quotations/{{ex3quotation.response.body.$.data.id}}/status
 Content-Type: application/json
-Authorization: Bearer {{w2token}}
+Authorization: Bearer {{w3token}}
+
+{
+  "status": "ACCEPTED"
+}
+
+### DRAFT -> SENT
+PATCH {{baseUrl}}/sales-quotations/{{ex3quotation.response.body.$.data.id}}/status
+Content-Type: application/json
+Authorization: Bearer {{w3token}}
+
+{
+  "status": "SENT"
+}
+
+### Edit while SENT ("lines" would REPLACE all lines)
+PATCH {{baseUrl}}/sales-quotations/{{ex3quotation.response.body.$.data.id}}
+Content-Type: application/json
+Authorization: Bearer {{w3token}}
+
+{
+  "notes": "السعر شامل التوصيل"
+}
+
+### Convert while SENT -> 409 INVALID_STATUS (only ACCEPTED can be converted)
+POST {{baseUrl}}/sales-quotations/{{ex3quotation.response.body.$.data.id}}/convert-to-invoice
+Content-Type: application/json
+Authorization: Bearer {{w3token}}
 
 {
   "paymentType": "CASH",
-  "invoiceDate": "2026-11-27",
+  "invoiceDate": "2026-11-28"
+}
+
+### SENT -> ACCEPTED
+PATCH {{baseUrl}}/sales-quotations/{{ex3quotation.response.body.$.data.id}}/status
+Content-Type: application/json
+Authorization: Bearer {{w3token}}
+
+{
+  "status": "ACCEPTED"
+}
+
+### Convert without warehouseId (the quotation has none) -> 400 VALIDATION_FAILED, field warehouseId
+POST {{baseUrl}}/sales-quotations/{{ex3quotation.response.body.$.data.id}}/convert-to-invoice
+Content-Type: application/json
+Authorization: Bearer {{w3token}}
+
+{
+  "paymentType": "CASH",
+  "invoiceDate": "2026-11-28"
+}
+
+### Convert with the warehouse (CASH) -> SI-2026-000003 DRAFT (paidAmount = netTotal 205.20); quotation CONVERTED
+# (SI-2026-000002 was the deleted invoice of W3-10: a number is never reused)
+# @name ex3convert
+POST {{baseUrl}}/sales-quotations/{{ex3quotation.response.body.$.data.id}}/convert-to-invoice
+Content-Type: application/json
+Authorization: Bearer {{w3token}}
+
+{
+  "paymentType": "CASH",
+  "invoiceDate": "2026-11-28",
   "warehouseId": "{{w2warehouse.response.body.$.data.id}}"
 }
 
-### =====================================================================
-### WEEK 3 - SALES INVOICES (samples, not the big test)
-### =====================================================================
-# Uses "WEEK 2 - THE BIG TEST" (Maadi: 218 brushes @ 10.6818) and the customer
-# of "WEEK 3 - SALES QUOTATIONS" above. Run those first.
+### Delete that DRAFT invoice -> 200; the quotation goes back to ACCEPTED
+DELETE {{baseUrl}}/sales-invoices/{{ex3convert.response.body.$.data.invoice.id}}
+Authorization: Bearer {{w3token}}
 
-### Sales invoice: 5 cartons x 180, discount 5%, tax 14%, CREDIT -> netTotal 974.70 (DRAFT)
-# SI-2026-000002 after the convert above (SI-2026-000001 if you skipped it).
-# @name w3invoice
-POST {{baseUrl}}/sales-invoices
+### The quotation again: status ACCEPTED, convertedToInvoiceId null (it can be converted again)
+GET {{baseUrl}}/sales-quotations/{{ex3quotation.response.body.$.data.id}}
+Authorization: Bearer {{w3token}}
+
+### ---------------------------------------------------------------------
+### Sales invoices (فواتير البيع)
+### ---------------------------------------------------------------------
+
+### One invoice: SI-2026-000001 POSTED, grossProfit 214.09, convertedFromQuotation SQ-2026-000001, salesReturns [SR-2026-000001]
+GET {{baseUrl}}/sales-invoices/{{w3invoiceId}}
+Authorization: Bearer {{w3token}}
+
+### What can still be returned: quantity 5, returnedQuantity 1, remainingQuantity 4 (cartons)
+GET {{baseUrl}}/sales-invoices/{{w3invoiceId}}/returnable
+Authorization: Bearer {{w3token}}
+
+### Invoices list (paginated; filters customerId, branchId, warehouseId, status, paymentType, dateFrom, dateTo, search)
+GET {{baseUrl}}/sales-invoices?status=POSTED&paymentType=CREDIT&warehouseId={{w2warehouse.response.body.$.data.id}}&page=1&pageSize=20
+Authorization: Bearer {{w3token}}
+
+### Post a POSTED invoice again -> 409 INVALID_STATUS
+POST {{baseUrl}}/sales-invoices/{{w3invoiceId}}/post
+Authorization: Bearer {{w3token}}
+
+### Edit a POSTED invoice -> 409 INVALID_STATUS
+PATCH {{baseUrl}}/sales-invoices/{{w3invoiceId}}
 Content-Type: application/json
-Authorization: Bearer {{w2token}}
+Authorization: Bearer {{w3token}}
 
 {
-  "invoiceDate": "2026-11-27",
-  "dueDate": "2026-12-27",
+  "paidAmount": 500
+}
+
+### Delete the customer: it has sales invoices -> 400 BAD_REQUEST ("Customer is used by N sales invoice(s) ...")
+DELETE {{baseUrl}}/customer/{{w3customer.response.body.$.data.id}}
+Authorization: Bearer {{w3token}}
+
+### A direct CREDIT invoice: 1 carton x 180, tax 14% -> SI-2026-000004 DRAFT, netTotal 205.20, remainingAmount 205.20
+# @name ex3invoice
+POST {{baseUrl}}/sales-invoices
+Content-Type: application/json
+Authorization: Bearer {{w3token}}
+
+{
+  "invoiceDate": "2026-11-28",
+  "dueDate": "2026-12-28",
   "paymentType": "CREDIT",
   "customerId": "{{w3customer.response.body.$.data.id}}",
   "branchId": "{{w2branch.response.body.$.data.id}}",
   "warehouseId": "{{w2warehouse.response.body.$.data.id}}",
-  "discountPercent": 5,
   "taxPercent": 14,
   "lines": [
     {
       "productId": "{{w2brush.response.body.$.data.id}}",
       "itemUnitId": "{{w2carton.response.body.$.data.id}}",
-      "quantity": 5,
+      "quantity": 1,
       "unitPrice": 180
     }
   ]
 }
 
-### Post (ترحيل): SALE -60 at 10.6818 -> Maadi 158; totalCost 640.91, grossProfit 214.09
-# @name w3invoicePost
-POST {{baseUrl}}/sales-invoices/{{w3invoice.response.body.$.data.id}}/post
-Authorization: Bearer {{w2token}}
-
-### Post again -> 409 INVALID_STATUS
-POST {{baseUrl}}/sales-invoices/{{w3invoice.response.body.$.data.id}}/post
-Authorization: Bearer {{w2token}}
-
-### What can still be returned, per line (returnedQuantity = POSTED sales returns; see "WEEK 3 - SALES RETURNS")
-GET {{baseUrl}}/sales-invoices/{{w3invoice.response.body.$.data.id}}/returnable
-Authorization: Bearer {{w2token}}
-
-### An invoice of 20 cartons (240 pieces, only 158 in Maadi)
-# @name w3bigInvoice
-POST {{baseUrl}}/sales-invoices
+### paidAmount above netTotal -> 400 BAD_REQUEST, field paidAmount
+PATCH {{baseUrl}}/sales-invoices/{{ex3invoice.response.body.$.data.id}}
 Content-Type: application/json
-Authorization: Bearer {{w2token}}
+Authorization: Bearer {{w3token}}
 
 {
-  "invoiceDate": "2026-11-27",
-  "paymentType": "CASH",
-  "customerId": "{{w3customer.response.body.$.data.id}}",
-  "branchId": "{{w2branch.response.body.$.data.id}}",
-  "warehouseId": "{{w2warehouse.response.body.$.data.id}}",
-  "lines": [
-    {
-      "productId": "{{w2brush.response.body.$.data.id}}",
-      "itemUnitId": "{{w2carton.response.body.$.data.id}}",
-      "quantity": 20,
-      "unitPrice": 180
-    }
-  ]
+  "paidAmount": 300
 }
 
-### Post it -> 400 INSUFFICIENT_STOCK, field lines.0.quantity ("available 158, requested 240"); nothing changes
-POST {{baseUrl}}/sales-invoices/{{w3bigInvoice.response.body.$.data.id}}/post
-Authorization: Bearer {{w2token}}
+### Post it -> SALE -12 at 10.6818: Maadi 133; totalCost 128.18, grossProfit 51.82
+# @name ex3invoicePost
+POST {{baseUrl}}/sales-invoices/{{ex3invoice.response.body.$.data.id}}/post
+Authorization: Bearer {{w3token}}
 
-### One invoice (lines + grossProfit)
-GET {{baseUrl}}/sales-invoices/{{w3invoice.response.body.$.data.id}}
-Authorization: Bearer {{w2token}}
+### Cancel it (إلغاء) -> SALE_CANCEL +12 at 10.6818 (the cost it left with): Maadi back to 145
+# @name ex3invoiceCancel
+POST {{baseUrl}}/sales-invoices/{{ex3invoice.response.body.$.data.id}}/cancel
+Authorization: Bearer {{w3token}}
 
-### List (paginated; filters customerId, branchId, warehouseId, status, paymentType, dateFrom, dateTo, search)
-GET {{baseUrl}}/sales-invoices?status=POSTED&page=1&pageSize=20
-Authorization: Bearer {{w2token}}
-
-### Cancel (إلغاء): SALE_CANCEL +60 at 10.6818 (the cost it left with) -> Maadi back to 218
-# @name w3invoiceCancel
-POST {{baseUrl}}/sales-invoices/{{w3invoice.response.body.$.data.id}}/cancel
-Authorization: Bearer {{w2token}}
-
-### Item card of the brush in Maadi: ... SALE -60, SALE_CANCEL +60 -> 218 @ 10.6818
-GET {{baseUrl}}/stock-movements/item-card?productId={{w2brush.response.body.$.data.id}}&warehouseId={{w2warehouse.response.body.$.data.id}}
-Authorization: Bearer {{w2token}}
-
-### =====================================================================
-### WEEK 3 - SALES RETURNS (samples, not the big test)
-### =====================================================================
-# Uses "WEEK 2 - THE BIG TEST" and the two Week 3 sections above (run them
-# first, in order): the converted invoice SI-2026-000001 (5 cartons x 180,
-# discount 5%, tax 14%, still DRAFT) and Maadi at 218 brushes @ 10.6818.
-# A sales return is ALWAYS linked to a POSTED sales invoice; the goods come
-# back at the cost they LEFT with (the invoice line's stockUnitCost).
-
-### Post SI-2026-000001: SALE -60 at 10.6818 -> Maadi 158
-# @name w3srInvoicePost
-POST {{baseUrl}}/sales-invoices/{{w3convert.response.body.$.data.invoice.id}}/post
-Authorization: Bearer {{w2token}}
-
-### Return 1 carton -> SR-2026-000001 DRAFT: subTotal 180, discountValue 9, taxValue 23.94, netTotal 194.94
-# Customer / branch / warehouse, unit, price, discount share and tax come from
-# the invoice; stockUnitCost 10.6818 from the invoice line.
-# @name w3return
+### A return on a CANCELLED invoice -> 400 BAD_REQUEST, field salesInvoiceId
 POST {{baseUrl}}/sales-returns
 Content-Type: application/json
-Authorization: Bearer {{w2token}}
+Authorization: Bearer {{w3token}}
 
 {
   "returnDate": "2026-11-28",
-  "reason": "تالف",
-  "salesInvoiceId": "{{w3convert.response.body.$.data.invoice.id}}",
+  "salesInvoiceId": "{{ex3invoice.response.body.$.data.id}}",
   "lines": [
     {
-      "salesInvoiceLineId": "{{w3srInvoicePost.response.body.$.data.lines[0].id}}",
+      "salesInvoiceLineId": "{{ex3invoicePost.response.body.$.data.lines[0].id}}",
       "quantity": 1
     }
   ]
 }
 
-### Return 6 cartons -> 400 QUANTITY_EXCEEDED, field lines.0.quantity ("Only 5 can still be returned ...")
+### Cancelled invoices
+GET {{baseUrl}}/sales-invoices?status=CANCELLED
+Authorization: Bearer {{w3token}}
+
+### ---------------------------------------------------------------------
+### Sales returns (مرتجعات البيع)
+### ---------------------------------------------------------------------
+
+### One return: SR-2026-000001 POSTED (lines + the invoice)
+GET {{baseUrl}}/sales-returns/{{w3return.response.body.$.data.id}}
+Authorization: Bearer {{w3token}}
+
+### Returns list (paginated; filters customerId, salesInvoiceId, status, dateFrom, dateTo)
+GET {{baseUrl}}/sales-returns?salesInvoiceId={{w3invoiceId}}&status=POSTED&page=1&pageSize=20
+Authorization: Bearer {{w3token}}
+
+### Post a POSTED return again -> 409 INVALID_STATUS
+POST {{baseUrl}}/sales-returns/{{w3return.response.body.$.data.id}}/post
+Authorization: Bearer {{w3token}}
+
+### A second return of SI-2026-000001: 1 carton, refund 100 -> SR-2026-000002 DRAFT, netTotal 194.94
+# @name ex3return
 POST {{baseUrl}}/sales-returns
 Content-Type: application/json
-Authorization: Bearer {{w2token}}
+Authorization: Bearer {{w3token}}
 
 {
   "returnDate": "2026-11-28",
-  "salesInvoiceId": "{{w3convert.response.body.$.data.invoice.id}}",
+  "reason": "زيادة عن الطلب",
+  "refundAmount": 100,
+  "salesInvoiceId": "{{w3invoiceId}}",
   "lines": [
     {
-      "salesInvoiceLineId": "{{w3srInvoicePost.response.body.$.data.lines[0].id}}",
-      "quantity": 6
+      "salesInvoiceLineId": "{{w3post.response.body.$.data.lines[0].id}}",
+      "quantity": 1
     }
   ]
 }
 
-### Post the return (ترحيل): SALE_RETURN +12 at 10.6818 -> Maadi 170; lineCost = totalCost 128.18
-# @name w3returnPost
-POST {{baseUrl}}/sales-returns/{{w3return.response.body.$.data.id}}/post
-Authorization: Bearer {{w2token}}
-
-### Post again -> 409 INVALID_STATUS
-POST {{baseUrl}}/sales-returns/{{w3return.response.body.$.data.id}}/post
-Authorization: Bearer {{w2token}}
-
-### Returnable on the invoice: quantity 5, returnedQuantity 1, remainingQuantity 4
-GET {{baseUrl}}/sales-invoices/{{w3convert.response.body.$.data.invoice.id}}/returnable
-Authorization: Bearer {{w2token}}
-
-### The invoice lists its returns: salesReturns [{ code: "SR-2026-000001", status: "POSTED", netTotal: "194.94" }]
-GET {{baseUrl}}/sales-invoices/{{w3convert.response.body.$.data.invoice.id}}
-Authorization: Bearer {{w2token}}
-
-### Cancel the invoice -> 400 BAD_REQUEST, field status (it has a POSTED return)
-POST {{baseUrl}}/sales-invoices/{{w3convert.response.body.$.data.invoice.id}}/cancel
-Authorization: Bearer {{w2token}}
-
-### One sales return (lines + the invoice)
-GET {{baseUrl}}/sales-returns/{{w3return.response.body.$.data.id}}
-Authorization: Bearer {{w2token}}
-
-### List (paginated; filters customerId, salesInvoiceId, status, dateFrom, dateTo)
-GET {{baseUrl}}/sales-returns?status=POSTED&page=1&pageSize=20
-Authorization: Bearer {{w2token}}
-
-### Cancel the return (إلغاء): SALE_RETURN_CANCEL -12 -> Maadi 158
-# @name w3returnCancel
-POST {{baseUrl}}/sales-returns/{{w3return.response.body.$.data.id}}/cancel
-Authorization: Bearer {{w2token}}
-
-### Now the invoice can be cancelled: SALE_CANCEL +60 at 10.6818 -> Maadi back to 218
-POST {{baseUrl}}/sales-invoices/{{w3convert.response.body.$.data.invoice.id}}/cancel
-Authorization: Bearer {{w2token}}
-
-### Item card of the brush in Maadi: ... SALE -60, SALE_RETURN +12, SALE_RETURN_CANCEL -12, SALE_CANCEL +60 -> 218 @ 10.6818
-GET {{baseUrl}}/stock-movements/item-card?productId={{w2brush.response.body.$.data.id}}&warehouseId={{w2warehouse.response.body.$.data.id}}
-Authorization: Bearer {{w2token}}
-
-### =====================================================================
-### WEEK 3 - STOCK TRANSFERS (samples, not the big test)
-### =====================================================================
-# Uses "WEEK 2 - THE BIG TEST" and the Week 3 sections above (run them first,
-# in order): Maadi has 218 brushes @ 10.6818. A transfer is ONE step: posting
-# takes the goods out of one warehouse and puts them into the other at the
-# source average cost (no prices). Any two warehouses, also of two branches.
-
-### A second branch: فرع مدينة نصر
-# @name w3nasrBranch
-POST {{baseUrl}}/branch
+### Edit the DRAFT: 2 cartons (lines are replaced) -> 360 / 18 / 47.88 / 389.88
+PATCH {{baseUrl}}/sales-returns/{{ex3return.response.body.$.data.id}}
 Content-Type: application/json
-Authorization: Bearer {{w2token}}
+Authorization: Bearer {{w3token}}
 
 {
-  "name": "فرع مدينة نصر",
-  "address": "مدينة نصر"
-}
-
-### Its warehouse: مخزن مدينة نصر (empty)
-# @name w3nasr
-POST {{baseUrl}}/inventory/branch/{{w3nasrBranch.response.body.$.data.id}}
-Content-Type: application/json
-Authorization: Bearer {{w2token}}
-
-{
-  "name": "مخزن مدينة نصر",
-  "address": "مدينة نصر"
-}
-
-### Transfer 2 cartons Maadi -> Nasr City -> ST-2026-000001 DRAFT (no stock change yet)
-# @name w3transfer
-POST {{baseUrl}}/stock-transfers
-Content-Type: application/json
-Authorization: Bearer {{w2token}}
-
-{
-  "transferDate": "2026-11-29",
-  "fromWarehouseId": "{{w2warehouse.response.body.$.data.id}}",
-  "toWarehouseId": "{{w3nasr.response.body.$.data.id}}",
-  "notes": "تحويل لفرع مدينة نصر",
   "lines": [
     {
-      "productId": "{{w2brush.response.body.$.data.id}}",
-      "itemUnitId": "{{w2carton.response.body.$.data.id}}",
+      "salesInvoiceLineId": "{{w3post.response.body.$.data.lines[0].id}}",
       "quantity": 2
     }
   ]
 }
 
-### Same warehouse in "from" and "to" -> 400 BAD_REQUEST, field toWarehouseId
-POST {{baseUrl}}/stock-transfers
-Content-Type: application/json
-Authorization: Bearer {{w2token}}
+### Post it -> SALE_RETURN +24 at 10.6818: Maadi 169; totalCost 256.36
+POST {{baseUrl}}/sales-returns/{{ex3return.response.body.$.data.id}}/post
+Authorization: Bearer {{w3token}}
 
-{
-  "transferDate": "2026-11-29",
-  "fromWarehouseId": "{{w2warehouse.response.body.$.data.id}}",
-  "toWarehouseId": "{{w2warehouse.response.body.$.data.id}}",
-  "lines": [
-    {
-      "productId": "{{w2brush.response.body.$.data.id}}",
-      "itemUnitId": "{{w2carton.response.body.$.data.id}}",
-      "quantity": 2
-    }
-  ]
-}
+### Returnable now: returnedQuantity 3, remainingQuantity 2
+GET {{baseUrl}}/sales-invoices/{{w3invoiceId}}/returnable
+Authorization: Bearer {{w3token}}
+
+### Cancel it (إلغاء) -> SALE_RETURN_CANCEL -24: Maadi back to 145 (and 4 cartons returnable again)
+POST {{baseUrl}}/sales-returns/{{ex3return.response.body.$.data.id}}/cancel
+Authorization: Bearer {{w3token}}
+
+### ---------------------------------------------------------------------
+### Stock transfers (التحويلات المخزنية)
+### ---------------------------------------------------------------------
+
+### One transfer: ST-2026-000001 POSTED (lines + both warehouses with their branch)
+GET {{baseUrl}}/stock-transfers/{{w3transfer.response.body.$.data.id}}
+Authorization: Bearer {{w3token}}
+
+### Transfers list (paginated; filters fromWarehouseId, toWarehouseId, status, dateFrom, dateTo, search = code / notes)
+GET {{baseUrl}}/stock-transfers?fromWarehouseId={{w2warehouse.response.body.$.data.id}}&status=POSTED&search=ST-2026&page=1&pageSize=20
+Authorization: Bearer {{w3token}}
+
+### Post a POSTED transfer again -> 409 INVALID_STATUS
+POST {{baseUrl}}/stock-transfers/{{w3transfer.response.body.$.data.id}}/post
+Authorization: Bearer {{w3token}}
 
 ### A SERVICE product (خدمي): خدمة توصيل
-# @name w3service
+# @name ex3service
 POST {{baseUrl}}/products
 Content-Type: application/json
-Authorization: Bearer {{w2token}}
+Authorization: Bearer {{w3token}}
 
 {
   "name": "خدمة توصيل",
@@ -1086,54 +1297,53 @@ Authorization: Bearer {{w2token}}
 ### Transfer a SERVICE product -> 400 BAD_REQUEST, field lines.0.productId
 POST {{baseUrl}}/stock-transfers
 Content-Type: application/json
-Authorization: Bearer {{w2token}}
+Authorization: Bearer {{w3token}}
 
 {
-  "transferDate": "2026-11-29",
+  "transferDate": "2026-11-28",
   "fromWarehouseId": "{{w2warehouse.response.body.$.data.id}}",
   "toWarehouseId": "{{w3nasr.response.body.$.data.id}}",
   "lines": [
     {
-      "productId": "{{w3service.response.body.$.data.id}}",
+      "productId": "{{ex3service.response.body.$.data.id}}",
       "itemUnitId": "{{w2piece.response.body.$.data.id}}",
       "quantity": 1
     }
   ]
 }
 
-### Post (ترحيل): TRANSFER_OUT -24 in Maadi (218 -> 194), TRANSFER_IN +24 in Nasr City at 10.6818; totalCost 256.36
-# @name w3transferPost
-POST {{baseUrl}}/stock-transfers/{{w3transfer.response.body.$.data.id}}/post
-Authorization: Bearer {{w2token}}
-
-### Post again -> 409 INVALID_STATUS
-POST {{baseUrl}}/stock-transfers/{{w3transfer.response.body.$.data.id}}/post
-Authorization: Bearer {{w2token}}
-
-### Item card Maadi: ... TRANSFER_OUT -24 -> 194 @ 10.6818
-GET {{baseUrl}}/stock-movements/item-card?productId={{w2brush.response.body.$.data.id}}&warehouseId={{w2warehouse.response.body.$.data.id}}
-Authorization: Bearer {{w2token}}
-
-### Item card Nasr City: TRANSFER_IN +24 -> 24 @ 10.6818
-GET {{baseUrl}}/stock-movements/item-card?productId={{w2brush.response.body.$.data.id}}&warehouseId={{w3nasr.response.body.$.data.id}}
-Authorization: Bearer {{w2token}}
-
-### One transfer (lines + both warehouses with their branch)
-GET {{baseUrl}}/stock-transfers/{{w3transfer.response.body.$.data.id}}
-Authorization: Bearer {{w2token}}
-
-### List (paginated; filters fromWarehouseId, toWarehouseId, status, dateFrom, dateTo, search = code / notes)
-GET {{baseUrl}}/stock-transfers?status=POSTED&search=ST-2026&page=1&pageSize=20
-Authorization: Bearer {{w2token}}
-
-### Nasr City sells 1 carton (12 of its 24 brushes)
-# @name w3nasrSale
-POST {{baseUrl}}/sales-invoices
+### A second transfer: 1 carton Maadi -> Nasr City -> ST-2026-000002 DRAFT
+# @name ex3transfer
+POST {{baseUrl}}/stock-transfers
 Content-Type: application/json
-Authorization: Bearer {{w2token}}
+Authorization: Bearer {{w3token}}
 
 {
-  "invoiceDate": "2026-11-29",
+  "transferDate": "2026-11-28",
+  "fromWarehouseId": "{{w2warehouse.response.body.$.data.id}}",
+  "toWarehouseId": "{{w3nasr.response.body.$.data.id}}",
+  "notes": "تحويل لفرع مدينة نصر",
+  "lines": [
+    {
+      "productId": "{{w2brush.response.body.$.data.id}}",
+      "itemUnitId": "{{w2carton.response.body.$.data.id}}",
+      "quantity": 1
+    }
+  ]
+}
+
+### Post it -> Maadi 133, Nasr City 36; totalCost 128.18
+POST {{baseUrl}}/stock-transfers/{{ex3transfer.response.body.$.data.id}}/post
+Authorization: Bearer {{w3token}}
+
+### Nasr City sells all its 3 cartons (36 brushes) -> SI-2026-000005 DRAFT
+# @name ex3nasrSale
+POST {{baseUrl}}/sales-invoices
+Content-Type: application/json
+Authorization: Bearer {{w3token}}
+
+{
+  "invoiceDate": "2026-11-28",
   "paymentType": "CASH",
   "customerId": "{{w3customer.response.body.$.data.id}}",
   "branchId": "{{w3nasrBranch.response.body.$.data.id}}",
@@ -1142,58 +1352,61 @@ Authorization: Bearer {{w2token}}
     {
       "productId": "{{w2brush.response.body.$.data.id}}",
       "itemUnitId": "{{w2carton.response.body.$.data.id}}",
-      "quantity": 1,
+      "quantity": 3,
       "unitPrice": 180
     }
   ]
 }
 
-### Post the sale -> Nasr City 12
-POST {{baseUrl}}/sales-invoices/{{w3nasrSale.response.body.$.data.id}}/post
-Authorization: Bearer {{w2token}}
+### Post the sale -> Nasr City 0
+POST {{baseUrl}}/sales-invoices/{{ex3nasrSale.response.body.$.data.id}}/post
+Authorization: Bearer {{w3token}}
 
-### Cancel the transfer now -> 400 INSUFFICIENT_STOCK, field lines.0.quantity ("available 12, requested 24"); nothing changes
-POST {{baseUrl}}/stock-transfers/{{w3transfer.response.body.$.data.id}}/cancel
-Authorization: Bearer {{w2token}}
+### Cancel the transfer now -> 400 INSUFFICIENT_STOCK, field lines.0.quantity ("available 0, requested 12"); nothing changes
+POST {{baseUrl}}/stock-transfers/{{ex3transfer.response.body.$.data.id}}/cancel
+Authorization: Bearer {{w3token}}
 
-### Cancel the sale -> Nasr City back to 24
-POST {{baseUrl}}/sales-invoices/{{w3nasrSale.response.body.$.data.id}}/cancel
-Authorization: Bearer {{w2token}}
+### Cancel the sale -> Nasr City back to 36
+POST {{baseUrl}}/sales-invoices/{{ex3nasrSale.response.body.$.data.id}}/cancel
+Authorization: Bearer {{w3token}}
 
-### Cancel the transfer (إلغاء): TRANSFER_IN_CANCEL -24 in Nasr City (0), TRANSFER_OUT_CANCEL +24 in Maadi at 10.6818 (218)
-# @name w3transferCancel
-POST {{baseUrl}}/stock-transfers/{{w3transfer.response.body.$.data.id}}/cancel
-Authorization: Bearer {{w2token}}
+### Cancel the transfer (إلغاء) -> TRANSFER_IN_CANCEL -12 in Nasr City (24), TRANSFER_OUT_CANCEL +12 in Maadi at 10.6818 (145)
+POST {{baseUrl}}/stock-transfers/{{ex3transfer.response.body.$.data.id}}/cancel
+Authorization: Bearer {{w3token}}
 
-### Item card Nasr City after the cancel: TRANSFER_IN +24, SALE -12, SALE_CANCEL +12, TRANSFER_IN_CANCEL -24 -> 0
+### Item card of Nasr City: TRANSFER_IN +24, TRANSFER_IN +12, SALE -36, SALE_CANCEL +36, TRANSFER_IN_CANCEL -12 -> 24
 GET {{baseUrl}}/stock-movements/item-card?productId={{w2brush.response.body.$.data.id}}&warehouseId={{w3nasr.response.body.$.data.id}}
-Authorization: Bearer {{w2token}}
+Authorization: Bearer {{w3token}}
 
-### =====================================================================
-### WEEK 3 - STOCK COUNTS (samples, not the big test)
-### =====================================================================
-# Uses "WEEK 2 - THE BIG TEST" and the Week 3 sections above (run them first,
-# in order): Maadi has 218 brushes @ 10.6818. A stock count (جرد) goes
-# DRAFT -> POSTED only: there is NO cancel (a mistake is fixed with a new count).
-# Flow: open (the server makes the lines) -> type the counts -> post.
+### ---------------------------------------------------------------------
+### Stock counts (الجرد)
+### ---------------------------------------------------------------------
 
-### Open a count on Maadi -> SC-2026-000001 DRAFT; one line per product, brush systemQuantity 218
-# @name w3count
-POST {{baseUrl}}/stock-counts
-Content-Type: application/json
-Authorization: Bearer {{w2token}}
+### One count: SC-2026-000001 POSTED (lines + product { id, code, name }, difference "-1", unitCost "10.6818")
+GET {{baseUrl}}/stock-counts/{{w3count.response.body.$.data.id}}
+Authorization: Bearer {{w3token}}
 
-{
-  "countDate": "2026-11-30",
-  "warehouseId": "{{w2warehouse.response.body.$.data.id}}",
-  "notes": "جرد آخر الشهر"
-}
+### Counts list (paginated; filters warehouseId, status, dateFrom, dateTo)
+GET {{baseUrl}}/stock-counts?warehouseId={{w2warehouse.response.body.$.data.id}}&status=POSTED&page=1&pageSize=20
+Authorization: Bearer {{w3token}}
 
-### An empty warehouse (no stock rows)
-# @name w3emptyWarehouse
+### Post a POSTED count again -> 409 INVALID_STATUS
+POST {{baseUrl}}/stock-counts/{{w3count.response.body.$.data.id}}/post
+Authorization: Bearer {{w3token}}
+
+### There is no cancel for a count -> 404 NOT_FOUND
+POST {{baseUrl}}/stock-counts/{{w3count.response.body.$.data.id}}/cancel
+Authorization: Bearer {{w3token}}
+
+### Delete a POSTED count -> 409 INVALID_STATUS (a posted count is final)
+DELETE {{baseUrl}}/stock-counts/{{w3count.response.body.$.data.id}}
+Authorization: Bearer {{w3token}}
+
+### An empty warehouse (no stock rows) in the Maadi branch
+# @name ex3emptyWarehouse
 POST {{baseUrl}}/inventory/branch/{{w2branch.response.body.$.data.id}}
 Content-Type: application/json
-Authorization: Bearer {{w2token}}
+Authorization: Bearer {{w3token}}
 
 {
   "name": "مخزن فاضي",
@@ -1203,35 +1416,33 @@ Authorization: Bearer {{w2token}}
 ### Open a count on it -> 400 BAD_REQUEST, field warehouseId ("The warehouse has no products to count")
 POST {{baseUrl}}/stock-counts
 Content-Type: application/json
-Authorization: Bearer {{w2token}}
+Authorization: Bearer {{w3token}}
 
 {
-  "countDate": "2026-11-30",
-  "warehouseId": "{{w3emptyWarehouse.response.body.$.data.id}}"
+  "countDate": "2026-11-28",
+  "warehouseId": "{{ex3emptyWarehouse.response.body.$.data.id}}"
+}
+
+### Open a count on Nasr City -> SC-2026-000002 DRAFT; brush systemQuantity 24
+# @name ex3count
+POST {{baseUrl}}/stock-counts
+Content-Type: application/json
+Authorization: Bearer {{w3token}}
+
+{
+  "countDate": "2026-11-28",
+  "warehouseId": "{{w3nasr.response.body.$.data.id}}",
+  "notes": "جرد مدينة نصر"
 }
 
 ### Post before counting anything -> 400 BAD_REQUEST, field lines ("Count at least one line before posting")
-POST {{baseUrl}}/stock-counts/{{w3count.response.body.$.data.id}}/post
-Authorization: Bearer {{w2token}}
+POST {{baseUrl}}/stock-counts/{{ex3count.response.body.$.data.id}}/post
+Authorization: Bearer {{w3token}}
 
-### Type the count (in pieces): 217 brushes on the shelf
-PATCH {{baseUrl}}/stock-counts/{{w3count.response.body.$.data.id}}/lines
+### A lineId that is not a line of this count -> 400 BAD_REQUEST, field lines.0.lineId (nothing saved)
+PATCH {{baseUrl}}/stock-counts/{{ex3count.response.body.$.data.id}}/lines
 Content-Type: application/json
-Authorization: Bearer {{w2token}}
-
-{
-  "lines": [
-    {
-      "lineId": "{{w3count.response.body.$.data.lines[0].id}}",
-      "countedQuantity": 217
-    }
-  ]
-}
-
-### A line of another count / unknown id -> 400 BAD_REQUEST, field lines.0.lineId
-PATCH {{baseUrl}}/stock-counts/{{w3count.response.body.$.data.id}}/lines
-Content-Type: application/json
-Authorization: Bearer {{w2token}}
+Authorization: Bearer {{w3token}}
 
 {
   "lines": [
@@ -1240,35 +1451,55 @@ Authorization: Bearer {{w2token}}
 }
 
 ### Edit the header (countDate / notes only, DRAFT)
-PATCH {{baseUrl}}/stock-counts/{{w3count.response.body.$.data.id}}
+PATCH {{baseUrl}}/stock-counts/{{ex3count.response.body.$.data.id}}
 Content-Type: application/json
-Authorization: Bearer {{w2token}}
+Authorization: Bearer {{w3token}}
 
 {
-  "notes": "جرد آخر الشهر - المعادي"
+  "notes": "جرد مدينة نصر - آخر الشهر"
 }
 
-### Post (ترحيل): ADJUSTMENT -1 (reason "جرد SC-2026-000001", sourceCode SC-2026-000001) -> Maadi 217; difference -1, unitCost 10.6818
-# @name w3countPost
-POST {{baseUrl}}/stock-counts/{{w3count.response.body.$.data.id}}/post
-Authorization: Bearer {{w2token}}
+### The warehouse of a count can't change -> 400 VALIDATION_FAILED ("property warehouseId should not exist")
+PATCH {{baseUrl}}/stock-counts/{{ex3count.response.body.$.data.id}}
+Content-Type: application/json
+Authorization: Bearer {{w3token}}
 
-### Post again -> 409 INVALID_STATUS
-POST {{baseUrl}}/stock-counts/{{w3count.response.body.$.data.id}}/post
-Authorization: Bearer {{w2token}}
+{
+  "warehouseId": "{{w2warehouse.response.body.$.data.id}}"
+}
 
-### There is no cancel -> 404 NOT_FOUND
-POST {{baseUrl}}/stock-counts/{{w3count.response.body.$.data.id}}/cancel
-Authorization: Bearer {{w2token}}
+### Type the count: 24 (= the system)
+PATCH {{baseUrl}}/stock-counts/{{ex3count.response.body.$.data.id}}/lines
+Content-Type: application/json
+Authorization: Bearer {{w3token}}
 
-### Item card Maadi: ... ADJUSTMENT -1 -> 217 @ 10.6818 (sourceType SC)
+{
+  "lines": [
+    {
+      "lineId": "{{ex3count.response.body.$.data.lines[0].id}}",
+      "countedQuantity": 24
+    }
+  ]
+}
+
+### Post it -> POSTED, difference "0", NO movement; Nasr City still 24
+POST {{baseUrl}}/stock-counts/{{ex3count.response.body.$.data.id}}/post
+Authorization: Bearer {{w3token}}
+
+### ---------------------------------------------------------------------
+### Stock movements (حركات المخزن)
+### ---------------------------------------------------------------------
+
+### Movements list, newest first (filters productId, warehouseId, type, dateFrom, dateTo; paginated)
+GET {{baseUrl}}/stock-movements?warehouseId={{w3nasr.response.body.$.data.id}}&type=TRANSFER_IN
+Authorization: Bearer {{w3token}}
+
+### Every SALE movement of the brush, newest first -> 3 (SI-2026-000005, SI-2026-000004, SI-2026-000001)
+# dateFrom / dateTo filter movementDate = the moment the movement was written
+# (when the document was posted / cancelled), not the document date.
+GET {{baseUrl}}/stock-movements?productId={{w2brush.response.body.$.data.id}}&type=SALE
+Authorization: Bearer {{w3token}}
+
+### Item card Maadi at the end: quantity 145, avgCost 10.6818 (the 9 big-test movements + 6 from these samples)
 GET {{baseUrl}}/stock-movements/item-card?productId={{w2brush.response.body.$.data.id}}&warehouseId={{w2warehouse.response.body.$.data.id}}
-Authorization: Bearer {{w2token}}
-
-### One stock count (lines + product { id, code, name })
-GET {{baseUrl}}/stock-counts/{{w3count.response.body.$.data.id}}
-Authorization: Bearer {{w2token}}
-
-### List (paginated; filters warehouseId, status, dateFrom, dateTo)
-GET {{baseUrl}}/stock-counts?status=POSTED&page=1&pageSize=20
-Authorization: Bearer {{w2token}}
+Authorization: Bearer {{w3token}}
