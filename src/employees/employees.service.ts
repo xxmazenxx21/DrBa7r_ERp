@@ -2,7 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { PrismaService } from '../prisma/prisma.service';
-import { generateCode } from '../utils/code-generator/code.generator';
+import { generateUniqueCode } from '../utils/code-generator/code.generator';
 import { ok } from '../utils/response/response';
 import { assertNotUsedByDeleted } from '../utils/unique/deleted-unique';
 
@@ -28,7 +28,7 @@ export class EmployeesService {
 
     const employee = await this.prisma.employee.create({
       data: {
-        code: generateCode('EMP'),
+        code: await generateUniqueCode(this.prisma.employee, 'EMP'),
         fullName: dto.fullName,
         nationalId: dto.nationalId,
         jobTitle: dto.jobTitle,

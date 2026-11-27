@@ -2,7 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
 import { PrismaService } from '../prisma/prisma.service';
-import { generateCode } from '../utils/code-generator/code.generator';
+import { generateUniqueCode } from '../utils/code-generator/code.generator';
 import { ok } from '../utils/response/response';
 
 @Injectable()
@@ -14,7 +14,7 @@ export class BranchService {
       data: {
         name: createBranchDto.name,
         address: createBranchDto.address,
-        code: generateCode('branch'),
+        code: await generateUniqueCode(this.prisma.branch, 'branch'),
       },
     });
     return ok('Branch created successfully', branch);

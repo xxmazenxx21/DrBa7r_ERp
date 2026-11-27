@@ -6,7 +6,7 @@ import {
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { PrismaService } from '../prisma/prisma.service';
-import { generateCode } from '../utils/code-generator/code.generator';
+import { generateUniqueCode } from '../utils/code-generator/code.generator';
 import { ok } from '../utils/response/response';
 
 @Injectable()
@@ -16,7 +16,7 @@ export class CustomerService {
   async create(dto: CreateCustomerDto) {
     const customer = await this.prisma.customer.create({
       data: {
-        code: generateCode('CUS'),
+        code: await generateUniqueCode(this.prisma.customer, 'CUS'),
         name: dto.name,
         taxNumber: dto.taxNumber,
         commercialRecord: dto.commercialRecord,

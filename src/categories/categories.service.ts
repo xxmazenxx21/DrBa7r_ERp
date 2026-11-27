@@ -6,7 +6,7 @@ import {
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { PrismaService } from '../prisma/prisma.service';
-import { generateCode } from '../utils/code-generator/code.generator';
+import { generateUniqueCode } from '../utils/code-generator/code.generator';
 import { ok } from '../utils/response/response';
 
 @Injectable()
@@ -15,7 +15,10 @@ export class CategoriesService {
 
   async create(createCategoryDto: CreateCategoryDto) {
     const category = await this.prisma.categories.create({
-      data: { name: createCategoryDto.name, code: generateCode('category') },
+      data: {
+        name: createCategoryDto.name,
+        code: await generateUniqueCode(this.prisma.categories, 'category'),
+      },
     });
     return ok('Category created successfully', category);
   }

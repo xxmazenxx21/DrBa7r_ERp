@@ -8,7 +8,7 @@ import { ItemType } from '../utils/enum/enum';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { PrismaService } from '../prisma/prisma.service';
-import { generateCode } from '../utils/code-generator/code.generator';
+import { generateUniqueCode } from '../utils/code-generator/code.generator';
 import { ok } from '../utils/response/response';
 import { assertExists } from '../utils/exists/assert-exists';
 import { assertNotUsedByDeleted } from '../utils/unique/deleted-unique';
@@ -62,7 +62,7 @@ export class ProductsService {
     });
     const product = await this.prisma.product.create({
       data: {
-        code: generateCode('PRD'),
+        code: await generateUniqueCode(this.prisma.product, 'PRD'),
         barcode: dto.barcode,
         name: dto.name,
         categoryId: dto.categoryId,

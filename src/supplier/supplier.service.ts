@@ -2,7 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { CreateSupplierDto } from './dto/create-supplier.dto';
 import { UpdateSupplierDto } from './dto/update-supplier.dto';
 import { PrismaService } from '../prisma/prisma.service';
-import { generateCode } from '../utils/code-generator/code.generator';
+import { generateUniqueCode } from '../utils/code-generator/code.generator';
 import { ok } from '../utils/response/response';
 
 @Injectable()
@@ -12,7 +12,7 @@ export class SupplierService {
   async create(dto: CreateSupplierDto) {
     const supplier = await this.prisma.supplier.create({
       data: {
-        code: generateCode('SUP'),
+        code: await generateUniqueCode(this.prisma.supplier, 'SUP'),
         name: dto.name,
         taxNumber: dto.taxNumber,
         contactPerson: dto.contactPerson,

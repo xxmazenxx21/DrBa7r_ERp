@@ -6,7 +6,7 @@ import {
 import { CreateItemUnitDto } from './dto/create-item-unit.dto';
 import { UpdateItemUnitDto } from './dto/update-item-unit.dto';
 import { PrismaService } from '../prisma/prisma.service';
-import { generateCode } from '../utils/code-generator/code.generator';
+import { generateUniqueCode } from '../utils/code-generator/code.generator';
 import { ok } from '../utils/response/response';
 
 @Injectable()
@@ -15,7 +15,10 @@ export class ItemUnitService {
 
   async create(createItemUnitDto: CreateItemUnitDto) {
     const item = await this.prisma.itemUnit.create({
-      data: { name: createItemUnitDto.name, code: generateCode('unit') },
+      data: {
+        name: createItemUnitDto.name,
+        code: await generateUniqueCode(this.prisma.itemUnit, 'unit'),
+      },
     });
     return ok('ItemUnit created successfully', item);
   }
