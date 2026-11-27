@@ -7,6 +7,16 @@ ERP backend (drba7r): NestJS 11 + Prisma 7 + PostgreSQL, a REST API with JWT aut
 
 - **There is no deployed server** (the old hosted server was removed; never add a hosted URL to the docs). Nothing runs online.
 - `main` = what the frontend uses. Work happens on `dev`, **one commit per task**, and `dev` is merged into `main` only after review. **Never push unfinished work to `main`.**
+- **Git workflow for every task:**
+  - Before starting: `git checkout dev && git pull origin dev`.
+  - This machine has **NO GitHub login**: commit on `dev` and **don't try `git push`** (it always fails here). At the end, tell the owner to run `git push origin dev`.
+  - After reviewing a task, the owner merges it from the terminal (not on GitHub), so `dev` and `main` always end on the same commit:
+    ```bash
+    git checkout main && git pull origin main
+    git merge dev -m "Merge dev: <task>" && git push origin main
+    git checkout dev && git merge --ff-only main && git push origin dev
+    ```
+    (A merge made on GitHub adds a commit that only `main` has, which blocks the next fast-forward of `dev`.)
 - The frontend developer runs the backend from `main` with Docker on `http://localhost:3000` (`git pull origin main` → `docker compose up -d --build`; see README "Run the backend locally (for the frontend developer)"). So every change on `main` must work from a fresh `docker compose up -d --build` and from an upgrade of an existing volume (migrations run on start; the admin is seeded only when there are no users).
 
 ## Run
@@ -137,7 +147,7 @@ Other scripts: `npm run build` (= `prisma generate && nest build`), `npm run lin
 ## Week 2 progress
 
 - The task list is `doc/week2/Week 2 Tasks.pdf`. Do **ONE task per request**: read section 0, section 1 and that task only (they are in Arabic; tables give the Prisma fields, the APIs, the rules and the files). If something is unclear or conflicts with the code, ask before guessing.
-- **Done** (on `dev`): Task 1 setup (`@CurrentUser`, pagination, document totals, 3 error codes), Task 2 numbering (Week 2 enums, `DocumentSequence`, `NumberingService`), Task 3 currency, Task 4 product-units (+ follow-up "lock primary unit once used"), Task 5 stock (`StockMovement`, `StockService`, item card), Task 6 purchase-quotations without convert-to-invoice (migration `purchase_quotations`), Task 7 purchase-invoices (migration `purchase_invoice_lines`), Task 6 convert-to-invoice, Task 8 purchase-returns (migration `purchase_returns`), Task 9 docs + the big test (`requests.http` section "WEEK 2 - THE BIG TEST", W2-0…W2-16, verified on an empty DB: final stock 218, average 10.6818).
+- **Done** (all merged into `main`): Task 1 setup (`@CurrentUser`, pagination, document totals, 3 error codes), Task 2 numbering (Week 2 enums, `DocumentSequence`, `NumberingService`), Task 3 currency, Task 4 product-units (+ follow-up "lock primary unit once used"), Task 5 stock (`StockMovement`, `StockService`, item card), Task 6 purchase-quotations without convert-to-invoice (migration `purchase_quotations`), Task 7 purchase-invoices (migration `purchase_invoice_lines`), Task 6 convert-to-invoice, Task 8 purchase-returns (migration `purchase_returns`), Task 9 docs + the big test (`requests.http` section "WEEK 2 - THE BIG TEST", W2-0…W2-16, verified on an empty DB: final stock 218, average 10.6818).
 - Week 2 is finished and merged into `main`.
 - `requests.http` layout: Week 1 samples first, then "WEEK 2 - THE BIG TEST" (self-contained, uses `w2*` request names and `@w2token`, must run on an empty DB in order), then "WEEK 2 - MORE EXAMPLES". Keep the big test green when you change Week 2 code; add new weeks as new sections.
 - **The 4 rules of the week:**
@@ -149,8 +159,8 @@ Other scripts: `npm run build` (= `prisma generate && nest build`), `npm run lin
 ## Week 3 progress
 
 - The task list is `doc/week3/Week 3 Tasks.pdf`. Do **ONE task per request**: read section 0, section 1 and that task only (each task ends with the exact prompt). The sales modules MIRROR the purchase modules (same shape: transaction, conditional `updateMany` on status, lines sorted by productId, `build()`), but stock goes the other way — understand before copying.
-- **Done** (on `dev`): Task 1 setup (migration `week3_enums`: new `DocumentType` / `StockMovementType` values; `StockService.adjust` accepts a source; shared `resolveCurrency` in `src/utils/document/document-currency.ts`; `doc/week3/00-overview.txt`, `doc/FRONTEND_WEEK3_READ_FIRST.txt`), Task 2 sales-quotations without convert-to-invoice (migration `sales_quotations`; `doc/week3/sales-quotations.txt`).
-- **Next, in this order:** Task 3 sales-invoices → Task 4 convert-to-invoice → Task 5 sales-returns → Task 6 stock-transfers → Task 7 stock-counts → Task 8 docs + the big test (`week3flow.txt`, W3-0…W3-22).
+- **Done, reviewed and merged into `main`** (commit `b06bf27`; `dev` = `main`): Task 1 setup (migration `week3_enums`: new `DocumentType` / `StockMovementType` values; `StockService.adjust` accepts a source; shared `resolveCurrency` in `src/utils/document/document-currency.ts`; `doc/week3/00-overview.txt`, `doc/FRONTEND_WEEK3_READ_FIRST.txt`), Task 2 sales-quotations without convert-to-invoice (migration `sales_quotations`; `doc/week3/sales-quotations.txt`).
+- **Next, in this order:** Task 3 sales-invoices (the most important task of the week) → Task 4 convert-to-invoice → Task 5 sales-returns → Task 6 stock-transfers → Task 7 stock-counts → Task 8 docs + the big test (`week3flow.txt`, W3-0…W3-22).
 - **The 6 decisions of Week 3** (don't change them without asking the owner):
   1. Stock transfer = ONE step: posting takes the goods out of the source warehouse and puts them into the destination in the same transaction (no "in transit").
   2. A sales return MUST be linked to a POSTED sales invoice (`salesInvoiceId` required); the goods come back at the original sale cost.
