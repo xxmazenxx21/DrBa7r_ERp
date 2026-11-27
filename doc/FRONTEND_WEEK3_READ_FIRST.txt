@@ -5,15 +5,58 @@ FRONTEND - READ THIS FIRST (Week 3 backend changes)
 >>> below after every pull.
 
 Last update: fix between Task 4 and Task 5 (deleting a converted DRAFT
-invoice frees its quotation, purchase AND sales: PART 5).
+invoice frees its quotation, purchase AND sales: PART 0, entry 0.3).
+Changes to screens you already built (Week 1 / Week 2): PART 0 - check it first.
 New endpoints: PART 2 (sales quotations), PART 3 (sales invoices),
 PART 4 (POST /sales-quotations/:id/convert-to-invoice).
-New enum values: PART 1. Changed: DELETE /customer/:id and DELETE /currency/:id (PART 3),
-DELETE /purchase-invoices/:id and DELETE /sales-invoices/:id (PART 5).
+New enum values: PART 1.
 
 
-0. Get the new backend
-----------------------
+=====================================================================
+PART 0 - CHANGES TO SCREENS YOU ALREADY BUILT (Week 1 / Week 2)
+=====================================================================
+Every Week 3 change to OLD behavior is listed here (one entry each, newest
+last). The new Week 3 screens are in PART 1 onwards.
+
+0.1 Customers screen (العملاء) - Delete button        (Week 3 Task 3)
+    DELETE /customer/:id
+    BEFORE: 200 for any active customer.
+    AFTER:  400 while any (not deleted) sales invoice uses the customer:
+      { "statusCode": 400, "message": "Customer is used by 3 sales invoice(s) and cannot be deleted", "error": "Bad Request", "code": "BAD_REQUEST", "field": null }
+    Frontend: show the error instead of removing the row.
+      Arabic: لا يمكن حذف العميل لأن عليه فواتير بيع
+
+0.2 Currencies screen (العملات) - Delete button       (Week 3 Task 3)
+    DELETE /currency/:id
+    BEFORE: refused (400) only when purchase invoices use the currency.
+    AFTER:  also refused when sales invoices use it:
+      { "statusCode": 400, "message": "Currency is used by 1 sales invoice(s) and cannot be deleted", "error": "Bad Request", "code": "BAD_REQUEST", "field": null }
+    Frontend: same error handling as the purchase case (show the message).
+      Arabic: لا يمكن حذف العملة لأنها مستخدمة في فواتير بيع
+
+0.3 Purchase invoice / purchase quotation screens - Delete of a converted
+    DRAFT invoice (also the sales screens, same rule)  (fix after Task 4)
+    DELETE /purchase-invoices/:id   (and DELETE /sales-invoices/:id)
+    Same request, same response ({ "message": "... invoice deleted successfully",
+    "data": null }), same 409 when the invoice is not DRAFT.
+    BEFORE: the quotation the invoice came from stayed CONVERTED and pointed
+            to the deleted invoice (opening it -> 404); it could never be
+            converted again.
+    AFTER:  in the same transaction the quotation goes back to ACCEPTED:
+              GET /purchase-quotations/:id (or /sales-quotations/:id)
+              -> "status": "ACCEPTED", "convertedToInvoiceId": null
+            so the "تحويل لفاتورة" (Convert) button shows again, and a new
+            convert makes a NEW invoice with a NEW number (PI-... / SI-...).
+    CANCEL of a POSTED invoice does NOT change the quotation: it stays
+    CONVERTED and its "فتح الفاتورة" link opens the CANCELLED invoice.
+    Frontend: after deleting an invoice that has "convertedFromQuotation",
+    reload that quotation (or invalidate its cache) so it shows ACCEPTED.
+    Suggested confirm text on Delete for such an invoice:
+      سيتم حذف الفاتورة وإرجاع عرض السعر <code> إلى حالة "مقبول" ليمكن تحويله مرة أخرى
+
+
+Get the new backend
+-------------------
     git checkout main
     git pull origin main
     docker compose up -d --build
@@ -134,16 +177,8 @@ PART 3 - SALES INVOICES (فواتير البيع)  - doc/week3/sales-invoices.tx
   UI: show totalCost / grossProfit / line costs read only on POSTED invoices
   (Week 5 will hide them from SALES / USER); hide paidAmount for CASH.
 
-Changed endpoints (BEFORE / AFTER)
-  DELETE /customer/:id
-    BEFORE: 200 for any active customer
-    AFTER:  400 while any (not deleted) sales invoice uses the customer
-      { "statusCode": 400, "message": "Customer is used by 3 sales invoice(s) and cannot be deleted", "error": "Bad Request", "code": "BAD_REQUEST", "field": null }
-      Arabic: لا يمكن حذف العميل لأن عليه فواتير بيع
-  DELETE /currency/:id
-    BEFORE: refused only when purchase invoices use it
-    AFTER:  also refused when sales invoices use it
-      { "statusCode": 400, "message": "Currency is used by 1 sales invoice(s) and cannot be deleted", "error": "Bad Request", "code": "BAD_REQUEST", "field": null }
+Changed old endpoints: DELETE /customer/:id and DELETE /currency/:id are now
+refused while sales invoices use them - see PART 0 (0.1, 0.2).
 
 Arabic labels (new keys)
   Sales invoice:  code = رقم الفاتورة, invoiceDate = تاريخ الفاتورة,
@@ -202,30 +237,3 @@ PART 4 - CONVERT A SALES QUOTATION TO AN INVOICE (تحويل العرض لفات
        make a new quotation without that product, or a direct sales invoice)
   Nothing is saved when a convert fails: the quotation stays ACCEPTED and no
   SI number is used.
-
-
-=====================================================================
-PART 5 - DELETING A CONVERTED DRAFT INVOICE FREES ITS QUOTATION
-         (purchase AND sales - this also changes Week 2 behavior)
-=====================================================================
-    DELETE /purchase-invoices/:id      DELETE /sales-invoices/:id
-  Same request, same response ({ "message": "... invoice deleted successfully",
-  "data": null }), same 409 when the invoice is not DRAFT. What changed is the
-  quotation the invoice was converted from (if any):
-
-  BEFORE: the quotation stayed CONVERTED and pointed to the deleted invoice
-          (GET /purchase-invoices/<convertedToInvoiceId> -> 404), and it could
-          never be converted again.
-  AFTER:  in the same transaction the quotation goes back to ACCEPTED:
-            GET /purchase-quotations/:id (or /sales-quotations/:id)
-            -> "status": "ACCEPTED", "convertedToInvoiceId": null
-          so the "تحويل لفاتورة" (Convert) button shows again, and a new
-          convert makes a NEW invoice with a NEW number (PI-... / SI-...).
-
-  CANCEL of a POSTED invoice does NOT change the quotation: it stays CONVERTED
-  and its "فتح الفاتورة" link opens the CANCELLED invoice (history kept).
-
-  What to do in the UI: after deleting an invoice that has
-  "convertedFromQuotation", reload that quotation (or invalidate its cache) so
-  it shows ACCEPTED. Suggested confirm text on Delete for such an invoice:
-    سيتم حذف الفاتورة وإرجاع عرض السعر <code> إلى حالة "مقبول" ليمكن تحويله مرة أخرى
